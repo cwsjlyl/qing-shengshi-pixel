@@ -738,26 +738,28 @@ body {
   }
 }
 
-/* 小遊戲底部輕量疊加工具列 */
+/* 小遊戲底部輕量疊加工具列 — no backdrop-filter (iPad Safari overlay steal) */
 .minigame-bar {
   position: absolute;
   left: 50%;
-  bottom: max(10px, env(safe-area-inset-bottom, 10px));
+  bottom: max(8px, env(safe-area-inset-bottom, 8px));
   transform: translateX(-50%);
   width: min(95vw, 760px);
-  background: rgba(28, 17, 13, 0.9);
+  background: rgba(28, 17, 13, 0.96);
   border: 2px solid rgba(232, 186, 75, 0.85);
   border-radius: 12px;
   padding: 8px 12px;
   color: #fff6e5;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
-  /* Instruction text must not block canvas drag/tap on iPad */
+  /* Instruction chrome must not block canvas drag/tap on iPad */
   pointer-events: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  z-index: 22;
+  max-height: min(28vh, 120px);
+  overflow: hidden;
 }
 .minigame-bar-actions,
 .minigame-bar-actions .pixel-btn,
@@ -771,6 +773,7 @@ body {
   font-size: 12.5px;
   line-height: 1.38;
   font-weight: 600;
+  pointer-events: none;
 }
 
 .minigame-bar-actions {
@@ -782,6 +785,29 @@ body {
 .minigame-bar-actions .pixel-btn {
   padding: 7px 11px;
   font-size: 13px;
+}
+
+/* Short landscape (iPad landscape / phone landscape): keep playfield clear */
+@media (max-height: 520px) and (orientation: landscape) {
+  .minigame-bar {
+    width: auto;
+    max-width: min(92vw, 520px);
+    left: auto;
+    right: max(8px, env(safe-area-inset-right, 8px));
+    transform: none;
+    bottom: max(6px, env(safe-area-inset-bottom, 6px));
+    padding: 4px 8px;
+    gap: 6px;
+    max-height: 56px;
+    align-items: center;
+  }
+  .minigame-bar-info {
+    display: none; /* instructions move out of the way; buttons stay */
+  }
+  .minigame-bar-actions .pixel-btn {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
 }
 
 @media (max-width: 600px) {
@@ -818,4 +844,9 @@ body {
   .minigame-bar-actions {
     justify-content: flex-end;
   }
+}
+
+/* Ensure overlay root never steals playfield touches */
+#hud-overlay {
+  pointer-events: none;
 }

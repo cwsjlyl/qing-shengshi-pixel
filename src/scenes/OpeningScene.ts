@@ -3,6 +3,7 @@ import { OPENING_TASK, STAGE_NAMES } from '../data/content';
 import { CHAR_IDLE_FRAME, TILE_SIZE, TileIndex } from '../gfx/PixelArtGenerator';
 import { gameState } from '../state/gameState';
 import { HudUI } from '../ui/HudUI';
+import { stopOtherScenes } from './exclusiveScene';
 
 const SCENE_W = 576;
 const SCENE_H = 432;
@@ -13,6 +14,7 @@ export class OpeningScene extends Phaser.Scene {
   }
 
   public create(data?: { stageName?: string }): void {
+    stopOtherScenes(this);
     this.cameras.main.setBackgroundColor('#1b1629');
     this.fitViewport(this.scale.width, this.scale.height);
 
@@ -22,6 +24,12 @@ export class OpeningScene extends Phaser.Scene {
     this.scale.on('resize', onResize);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.scale.off('resize', onResize);
+      // Never leave 「穿越清朝盛世」 over a later scene
+      const main = document.getElementById('hud-main-layer');
+      if (main?.querySelector('#btn-start-stage') || main?.querySelector('.dialogue-modal')) {
+        const ui = this.registry.get('ui') as HudUI;
+        ui.clearMainOverlay();
+      }
     });
 
     const g = this.add.graphics();

@@ -1,7 +1,9 @@
 import Phaser from 'phaser';
 import { CHAR_IDLE_FRAME, TILE_SIZE, TileIndex } from '../gfx/PixelArtGenerator';
+import { bindRawPointerBridge } from '../input/rawPointerBridge';
 import { gameState } from '../state/gameState';
 import { HudUI } from '../ui/HudUI';
+import { clearStaleTitleOrOpeningHud, stopOtherScenes } from '../scenes/exclusiveScene';
 
 const STAGE_W = 528;
 const STAGE_H = 396;
@@ -45,7 +47,10 @@ export class ArcheryMinigame extends Phaser.Scene {
     this.ended = false;
     this.aimAngle = -Math.PI / 2;
 
-    this.cameras.main.setBackgroundColor('#c4a974');
+    stopOtherScenes(this);
+    clearStaleTitleOrOpeningHud(this);
+
+        this.cameras.main.setBackgroundColor('#c4a974');
     this.input.setTopOnly(false);
     this.fitViewport(this.scale.width, this.scale.height);
 
@@ -121,29 +126,39 @@ export class ArcheryMinigame extends Phaser.Scene {
     const guideDot = this.add.rectangle(0, -30, 4, 15, 0xffe48a, 1);
     this.bowContainer.add([bowArc, guideDot]);
 
-    // iPad-safe: convert screen pointer → camera world, then aim/fire
-    const pointerWorld = (p: Phaser.Input.Pointer) =>
-      this.cameras.main.getWorldPoint(p.x, p.y);
+    // Large soldier / bow hit pad — tap here fires FORWARD (straight up)
+    const soldierPad = this.add
+      .rectangle(STAGE_W / 2, 358, 140, 100, 0xffffff, 0.001)
+      .setDepth(24);
+    void soldierPad;
 
-    this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
-      if (this.ended) return;
-      if (p.isDown) {
-        const w = pointerWorld(p);
-        this.aimAtPoint(w.x, w.y);
-      }
-    });
+    const SOLDIER_HIT_R = 78;
+    const isOnSoldier = (wx: number, wy: number) => {
+      const sx = STAGE_W / 2;
+      const sy = 358;
+      return Math.hypot(wx - sx, wy - sy) <= SOLDIER_HIT_R || wy >= 320;
+    };
 
-    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
-      if (this.ended) return;
-      const w = pointerWorld(p);
-      // Prefer firing toward a tapped target if finger lands on one
-      const tapped = this.findTargetAt(w.x, w.y);
-      if (tapped) {
-        this.aimAtPoint(tapped.container.x, tapped.container.y);
-      } else {
-        this.aimAtPoint(w.x, w.y);
+    // Raw window-capture touch/pointer (fresh client→world; iPad Safari-safe)
+    bindRawPointerBridge(this, {
+      onDown: (wx, wy) => {
+        if (this.ended) return;
+        const tapped = this.findTargetAt(wx, wy);
+        if (tapped) {
+          this.aimAtPoint(tapped.container.x, tapped.container.y);
+        } else if (isOnSoldier(wx, wy)) {
+          // 李主任：點士兵便向前發射
+          this.aimAngle = -Math.PI / 2;
+          this.bowContainer.setRotation(this.aimAngle + Math.PI / 2);
+        } else if (wy < 320) {
+          this.aimAtPoint(wx, wy);
+        } else {
+          // Bottom chrome / empty lower area → still fire forward
+          this.aimAngle = -Math.PI / 2;
+          this.bowContainer.setRotation(this.aimAngle + Math.PI / 2);
+        }
+        this.fireArrow();
       }
-      this.fireArrow();
     });
 
     if (this.input.keyboard) {
@@ -166,7 +181,7 @@ export class ArcheryMinigame extends Phaser.Scene {
     ui.renderMinigamePanel({
       title: '射箭平亂挑戰（乾隆朝）',
       instruction:
-        '用手指點按移動中的叛軍標靶即可朝該目標射箭（電腦亦可用左右鍵瞄準、空白鍵發射），擊倒 6 個標靶即過關！',
+        '點士兵向前射箭；點叛軍標靶朝該目標射；點空地朝該處射（電腦可用左右鍵瞄準、空白鍵發射）。擊倒 6 個標靶即過關！',
       onRetry: () => this.scene.restart(),
       onLeave: () => this.scene.start('ExploreScene')
     });
@@ -203,11 +218,7 @@ export class ArcheryMinigame extends Phaser.Scene {
       Phaser.Geom.Rectangle.Contains
     );
     if (c.input) c.input.cursor = 'pointer';
-    c.on('pointerdown', () => {
-      if (this.ended) return;
-      this.aimAtPoint(c.x, c.y);
-      this.fireArrow();
-    });
+    // Firing is handled by rawPointerBridge + findTargetAt (avoids double-shot)
 
     this.targets.push({
       container: c,
@@ -218,7 +229,7 @@ export class ArcheryMinigame extends Phaser.Scene {
 
   private findTargetAt(wx: number, wy: number): RebelTarget | null {
     let best: RebelTarget | null = null;
-    let bestDist = 56;
+    let bestDist = 72;
     for (const t of this.targets) {
       if (!t.active) continue;
       const d = Phaser.Math.Distance.Between(wx, wy, t.container.x, t.container.y);

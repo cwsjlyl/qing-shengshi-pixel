@@ -70,11 +70,18 @@ const config: Phaser.Types.Core.GameConfig = {
 
 const game = new Phaser.Game(config);
 
+/**
+ * Always refresh cached canvasBounds (iPad Safari visualViewport can scroll /
+ * offset without a size change; stale bounds make touches miss the boat).
+ * Still resize when the painted size actually changes.
+ */
 function syncGameToVisualViewport(): void {
   const { width, height } = readViewportSize();
   if (game.scale.width !== width || game.scale.height !== height) {
     game.scale.resize(width, height);
   }
+  // refresh/updateBounds even when size is unchanged — clears stale page offsets
+  game.scale.refresh();
 }
 
 window.addEventListener('resize', syncGameToVisualViewport);
@@ -86,3 +93,4 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener('resize', syncGameToVisualViewport);
   window.visualViewport.addEventListener('scroll', syncGameToVisualViewport);
 }
+

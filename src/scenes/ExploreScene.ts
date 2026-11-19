@@ -13,6 +13,7 @@ import {
 } from '../maps/stageMaps';
 import { gameState } from '../state/gameState';
 import { HudUI } from '../ui/HudUI';
+import { stopOtherScenes } from './exclusiveScene';
 
 const WATER_FRAMES = [TileIndex.WATER_1, TileIndex.WATER_2, TileIndex.WATER_3];
 const COMPACT_HUD_STYLE_ID = 'explore-compact-hud-style';
@@ -53,6 +54,8 @@ export class ExploreScene extends Phaser.Scene {
   }
 
   public create(): void {
+    stopOtherScenes(this);
+
     this.ensureCompactStatusCardStyle();
 
     this.isDepartingCutscene = false;
