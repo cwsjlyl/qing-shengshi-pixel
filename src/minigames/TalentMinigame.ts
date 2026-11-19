@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { CHAR_IDLE_FRAME, TILE_SIZE, TileIndex } from '../gfx/PixelArtGenerator';
 import { gameState } from '../state/gameState';
 import { HudUI } from '../ui/HudUI';
+import { clearStaleTitleOrOpeningHud, stopOtherScenes } from '../scenes/exclusiveScene';
 
 const STAGE_W = 528;
 const STAGE_H = 408;
@@ -95,7 +96,10 @@ export class TalentMinigame extends Phaser.Scene {
     this.cardContainers.clear();
     this.cardBasePos.clear();
 
-    this.cameras.main.setBackgroundColor('#261812');
+    stopOtherScenes(this);
+    clearStaleTitleOrOpeningHud(this);
+
+        this.cameras.main.setBackgroundColor('#261812');
     this.input.setTopOnly(false);
     this.fitViewport(this.scale.width, this.scale.height);
 

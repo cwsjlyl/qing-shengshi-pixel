@@ -3,6 +3,7 @@ import { MODE_CLASS_LABEL, STAGE_NAMES, StageId } from '../data/content';
 import { CHAR_IDLE_FRAME, TILE_SIZE, TileIndex } from '../gfx/PixelArtGenerator';
 import { gameState } from '../state/gameState';
 import { HudUI } from '../ui/HudUI';
+import { stopOtherScenes } from './exclusiveScene';
 
 const SCENE_W = 576;
 const SCENE_H = 432;
@@ -13,6 +14,8 @@ export class ClassSelectScene extends Phaser.Scene {
   }
 
   public create(): void {
+    stopOtherScenes(this);
+
     this.cameras.main.setBackgroundColor('#261712');
     this.fitViewport(this.scale.width, this.scale.height);
 

@@ -1,7 +1,9 @@
 import Phaser from 'phaser';
 import { TILE_SIZE, TileIndex } from '../gfx/PixelArtGenerator';
+import { bindRawPointerBridge } from '../input/rawPointerBridge';
 import { gameState } from '../state/gameState';
 import { HudUI } from '../ui/HudUI';
+import { clearStaleTitleOrOpeningHud, stopOtherScenes } from '../scenes/exclusiveScene';
 
 const STAGE_W = 528;
 const STAGE_H = 396;
@@ -67,7 +69,10 @@ export class SouthernTourMinigame extends Phaser.Scene {
     this.obstacles = [];
     this.bankProps = [];
 
-    this.cameras.main.setBackgroundColor('#216878');
+    stopOtherScenes(this);
+    clearStaleTitleOrOpeningHud(this);
+
+        this.cameras.main.setBackgroundColor('#216878');
     this.input.setTopOnly(false);
     this.fitViewport(this.scale.width, this.scale.height);
 
@@ -108,11 +113,6 @@ export class SouthernTourMinigame extends Phaser.Scene {
       laneGraphics.lineBetween(x, 189, x + 14, 189);
       laneGraphics.lineBetween(x, 255, x + 14, 255);
     }
-
-    // Large invisible water pad for grab-anywhere boat control (iPad-friendly)
-    const waterPad = this.add
-      .rectangle(STAGE_W / 2, 222, STAGE_W + 40, 220, 0xffffff, 0.001)
-      .setDepth(14);
 
     // 頂部雙列資訊牌匾與國庫存銀遞減條
     this.add
@@ -172,10 +172,6 @@ export class SouthernTourMinigame extends Phaser.Scene {
       .setScale(0.75)
       .setDepth(20);
 
-    const pointerWorld = (p: Phaser.Input.Pointer) => {
-      const cam = this.cameras.main;
-      return cam.getWorldPoint(p.x, p.y);
-    };
     const clampBoat = (x: number, y: number) => {
       const nx = Phaser.Math.Clamp(x, 56, STAGE_W - 72);
       const ny = Phaser.Math.Clamp(y, 138, 318);
@@ -192,35 +188,28 @@ export class SouthernTourMinigame extends Phaser.Scene {
       }
       this.currentLane = best;
     };
-    const beginBoatDrag = (p: Phaser.Input.Pointer) => {
-      if (this.ended) return;
-      const w = pointerWorld(p);
-      // Accept grab near boat OR anywhere on water pad (no tiny hit box)
-      const nearBoat =
-        Math.abs(w.x - this.boat.x) < 90 && Math.abs(w.y - this.boat.y) < 70;
-      const onWater =
-        w.y >= 130 && w.y <= 330 && w.x >= 20 && w.x <= STAGE_W - 20;
-      if (!nearBoat && !onWater) return;
-      this.boatDragging = true;
-      this.boatDragOffX = this.boat.x - w.x;
-      this.boatDragOffY = this.boat.y - w.y;
-      if (nearBoat || onWater) {
-        clampBoat(w.x + this.boatDragOffX, w.y + this.boatDragOffY);
+
+    // Raw window-capture touch/pointer: any playfield press starts a drag,
+    // then follow the finger inside canal X/Y clamps (iPad Safari-safe).
+    const inPlayfield = (wx: number, wy: number) =>
+      wx >= -40 && wx <= STAGE_W + 40 && wy >= 90 && wy <= STAGE_H + 20;
+
+    bindRawPointerBridge(this, {
+      onDown: (wx, wy) => {
+        if (this.ended || !inPlayfield(wx, wy)) return;
+        this.boatDragging = true;
+        this.boatDragOffX = this.boat.x - wx;
+        this.boatDragOffY = this.boat.y - wy;
+        clampBoat(wx + this.boatDragOffX, wy + this.boatDragOffY);
+      },
+      onMove: (wx, wy) => {
+        if (!this.boatDragging || this.ended) return;
+        clampBoat(wx + this.boatDragOffX, wy + this.boatDragOffY);
+      },
+      onUp: () => {
+        this.boatDragging = false;
       }
-    };
-    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => beginBoatDrag(p));
-    this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
-      if (!this.boatDragging || this.ended) return;
-      const w = pointerWorld(p);
-      clampBoat(w.x + this.boatDragOffX, w.y + this.boatDragOffY);
     });
-    const endDrag = () => {
-      this.boatDragging = false;
-    };
-    this.input.on('pointerup', endDrag);
-    this.input.on('pointerupoutside', endDrag);
-    // Keep pad reference so it is not GC-optimized away from scene graph
-    waterPad.setVisible(true);
 
     if (this.input.keyboard) {
       this.cursors = this.input.keyboard.createCursorKeys();

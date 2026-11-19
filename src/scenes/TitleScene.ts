@@ -8,6 +8,7 @@ import { STAGE_NAMES, TITLE, StageId } from '../data/content';
 import { CHAR_IDLE_FRAME, TILE_SIZE, TileIndex } from '../gfx/PixelArtGenerator';
 import { gameState } from '../state/gameState';
 import { HudUI } from '../ui/HudUI';
+import { stopOtherScenes } from './exclusiveScene';
 
 const SCENE_W = 576;
 
@@ -62,6 +63,7 @@ export class TitleScene extends Phaser.Scene {
   }
 
   public create(): void {
+    stopOtherScenes(this);
     this.cameras.main.setBackgroundColor('#244f73');
 
     // 1. 晴空漸層色帶（向上與左右大幅延伸，適配超寬橫向與修長直向螢幕）
@@ -277,14 +279,20 @@ export class TitleScene extends Phaser.Scene {
         Phaser.Geom.Rectangle.Contains
       );
       spr.input!.cursor = 'pointer';
-      spr.on('pointerdown', () => enterClassroomStage(emp.id));
+      spr.on('pointerdown', () => {
+        if (!this.sys.isActive()) return;
+        enterClassroomStage(emp.id);
+      });
 
       // Extra invisible pad covering the doll + label space
       const pad = this.add
         .rectangle(emp.x, emperorY - 28, 78, 100, 0xffffff, 0.001)
         .setDepth(17)
         .setInteractive({ useHandCursor: true });
-      pad.on('pointerdown', () => enterClassroomStage(emp.id));
+      pad.on('pointerdown', () => {
+        if (!this.sys.isActive()) return;
+        enterClassroomStage(emp.id);
+      });
     }
 
     // 6. 頂部描金宮匾標題（寬 348px、高 54px，確保直向窄螢幕與橫向低螢幕皆不溢出）
@@ -355,6 +363,12 @@ export class TitleScene extends Phaser.Scene {
       if (this.rafId !== null) {
         window.cancelAnimationFrame(this.rafId);
         this.rafId = null;
+      }
+      // Drop title dock if next scene has not replaced HUD yet
+      const main = document.getElementById('hud-main-layer');
+      if (main?.querySelector('.title-dock')) {
+        const ui = this.registry.get('ui') as HudUI;
+        ui.clearMainOverlay();
       }
     });
   }
