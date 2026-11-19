@@ -1,0 +1,425 @@
+import Phaser from 'phaser';
+import {
+  ExtraTileIndex,
+  HD_PROPS_ATLAS_KEY,
+  PropStampFrame
+} from '../art/OriginalArtLoader';
+import { STAGE_NAMES, TITLE } from '../data/content';
+import { CHAR_IDLE_FRAME, TILE_SIZE, TileIndex } from '../gfx/PixelArtGenerator';
+import { gameState } from '../state/gameState';
+import { HudUI } from '../ui/HudUI';
+
+const SCENE_W = 576;
+
+/**
+ * 標題畫面核心構圖安全範圍（由頂部描金宮匾 y=8 至殿前三位皇帝腳底漢白玉御道 y=270）：
+ * 寬 356px、高 262px，確保在手機橫向（如 667×375、844×390）、直向、iPad 與電腦螢幕
+ * 皆能以 1x／2x／3x 整數倍縮放完整呈現於下方選單之上，絕不裁切或遮擋角色。
+ */
+const FOCAL_W = 356;
+const FOCAL_TOP_Y = 8;
+const FOCAL_BOTTOM_Y = 270;
+const FOCAL_H = FOCAL_BOTTOM_Y - FOCAL_TOP_Y;
+const FOCAL_CENTER_Y = Math.round((FOCAL_TOP_Y + FOCAL_BOTTOM_Y) / 2);
+
+const COURTYARD_BRICK_VARIANTS = [
+  TileIndex.COURTYARD_BRICK_A,
+  TileIndex.COURTYARD_BRICK_B,
+  TileIndex.COURTYARD_BRICK_C,
+  ExtraTileIndex.COURTYARD_BRICK_D,
+  ExtraTileIndex.COURTYARD_BRICK_E,
+  ExtraTileIndex.COURTYARD_BRICK_F
+];
+
+const MARBLE_PATH_VARIANTS = [
+  TileIndex.MARBLE_PATH_A,
+  TileIndex.MARBLE_PATH_B,
+  ExtraTileIndex.MARBLE_PATH_C,
+  ExtraTileIndex.MARBLE_PATH_D
+];
+
+const GARDEN_GRASS_VARIANTS = [
+  TileIndex.GRASS_A,
+  TileIndex.GRASS_B,
+  TileIndex.GRASS_FLOWER,
+  ExtraTileIndex.GRASS_C,
+  ExtraTileIndex.GRASS_D,
+  ExtraTileIndex.GRASS_E
+];
+
+function spatialHash(col: number, row: number): number {
+  let h = (col * 374761393 + row * 668265263) | 0;
+  h = ((h ^ (h >>> 13)) * 1274126177) | 0;
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
+export class TitleScene extends Phaser.Scene {
+  private clouds: Phaser.GameObjects.Rectangle[] = [];
+  private rafId: number | null = null;
+
+  constructor() {
+    super('TitleScene');
+  }
+
+  public create(): void {
+    this.cameras.main.setBackgroundColor('#244f73');
+
+    // 1. 晴空漸層色帶（向上與左右大幅延伸，適配超寬橫向與修長直向螢幕）
+    const sky = this.add.graphics().setDepth(0);
+    sky.fillStyle(0x234e75, 1);
+    sky.fillRect(-960, -720, SCENE_W + 1920, 780);
+    sky.fillStyle(0x376d99, 1);
+    sky.fillRect(-960, 56, SCENE_W + 1920, 62);
+    sky.fillStyle(0x639bc2, 1);
+    sky.fillRect(-960, 118, SCENE_W + 1920, 48);
+    sky.fillStyle(0x9ec2db, 1);
+    sky.fillRect(-960, 166, SCENE_W + 1920, 34);
+
+    // 祥雲緩緩飄動
+    this.clouds = [];
+    for (let i = 0; i < 7; i++) {
+      const c = this.add
+        .rectangle(
+          -120 + i * 136,
+          28 + (i % 3) * 22,
+          64,
+          12,
+          0xfaf6eb,
+          0.78
+        )
+        .setDepth(1);
+      this.clouds.push(c);
+    }
+
+    // 2. 廣闊宮苑地面：6 種原創灰磚變體、4 種漢白玉變體與兩側御苑草地（消除循環重複感與灰邊）
+    for (let r = 8; r <= 33; r++) {
+      const py = r * TILE_SIZE + TILE_SIZE / 2;
+      for (let c = -18; c <= 41; c++) {
+        const px = c * TILE_SIZE + TILE_SIZE / 2;
+        const h = spatialHash(c, r);
+
+        let tileFrame: number;
+        if (c >= 10 && c <= 13) {
+          // 中軸漢白玉御道與丹陛雕石
+          if (r >= 10 && (c === 11 || c === 12) && r % 3 === 1) {
+            tileFrame =
+              r % 2 === 0
+                ? TileIndex.MARBLE_DRAGON_CARVING
+                : ExtraTileIndex.CARVED_MEDALLION_STONE;
+          } else {
+            tileFrame = MARBLE_PATH_VARIANTS[h % MARBLE_PATH_VARIANTS.length];
+          }
+        } else if (c < -6 || c > 29) {
+          // 外側御苑草地變體
+          tileFrame = GARDEN_GRASS_VARIANTS[h % GARDEN_GRASS_VARIANTS.length];
+        } else {
+          // 殿前廣場 6 款青灰磚變體混排
+          tileFrame =
+            COURTYARD_BRICK_VARIANTS[h % COURTYARD_BRICK_VARIANTS.length];
+        }
+
+        this.add.image(px, py, 'palace_tiles', tileFrame).setDepth(2);
+      }
+    }
+
+    // 3. 屋簷與宮牆地面投影（增添立體層次）
+    const shadowGfx = this.add.graphics().setDepth(3);
+    shadowGfx.fillStyle(0x0d0907, 0.26);
+    shadowGfx.fillRect(-960, 190, SCENE_W + 1920, 12);
+    shadowGfx.fillStyle(0x0d0907, 0.18);
+    shadowGfx.fillRect(176, 134, 224, 10);
+
+    // 4. 立體紅牆黃瓦宮殿建築群（優先使用原創 hd_art_props 大型立體部件，避免單格重複牆）
+    const hasHdProps = this.textures.exists(HD_PROPS_ATLAS_KEY);
+
+    if (hasHdProps) {
+      const addProp = (
+        x: number,
+        y: number,
+        frame: PropStampFrame,
+        depth: number,
+        flipX = false
+      ) =>
+        this.add
+          .image(x, y, HD_PROPS_ATLAS_KEY, frame)
+          .setDepth(depth)
+          .setFlipX(flipX);
+
+      // 遠處延伸紅牆黃瓦翼牆（覆蓋超寬螢幕左右視野）
+      for (const spanX of [-420, -180, 756, 996]) {
+        addProp(spanX, 152, 'palace_wall_span', 5);
+      }
+
+      // 左右宮牆配殿立面
+      addProp(96, 158, 'palace_wing_left', 6);
+      addProp(-48, 158, 'palace_wing_right', 6);
+      addProp(480, 158, 'palace_wing_right', 6);
+      addProp(624, 158, 'palace_wing_left', 6);
+
+      // 中央主殿朱紅牆身、雕花檻窗與正中宮門
+      for (let c = 8; c <= 15; c++) {
+        const px = c * TILE_SIZE + TILE_SIZE / 2;
+        this.add
+          .image(px, 148, 'palace_tiles', TileIndex.RED_WALL_FRIEZE)
+          .setDepth(7);
+
+        let lowerWallFrame: number = TileIndex.RED_WALL_BASE;
+        if (c === 11) lowerWallFrame = TileIndex.GATE_DOOR_LEFT;
+        else if (c === 12) lowerWallFrame = TileIndex.GATE_DOOR_RIGHT;
+        else if (c === 9 || c === 14) lowerWallFrame = TileIndex.PALACE_WINDOW;
+        else if (c === 8 || c === 15)
+          lowerWallFrame = ExtraTileIndex.PALACE_WINDOW_B;
+
+        this.add
+          .image(px, 172, 'palace_tiles', lowerWallFrame)
+          .setDepth(7);
+      }
+
+      // 主殿漢白玉廊柱與重簷黃琉璃大屋頂
+      addProp(198, 162, 'palace_pillar_a', 8);
+      addProp(254, 162, 'palace_pillar_b', 8);
+      addProp(322, 162, 'palace_pillar_b', 8, true);
+      addProp(378, 162, 'palace_pillar_a', 8, true);
+
+      addProp(152, 108, 'palace_side_roof', 9);
+      addProp(424, 108, 'palace_side_roof', 9, true);
+      addProp(SCENE_W / 2, 102, 'palace_grand_roof', 10);
+
+      // 漢白玉須彌座護欄與正中丹陛玉階
+      for (let c = -16; c <= 39; c++) {
+        if (c >= 10 && c <= 13) continue;
+        const px = c * TILE_SIZE + TILE_SIZE / 2;
+        this.add
+          .image(px, 194, 'palace_tiles', TileIndex.TERRACE_BASE)
+          .setDepth(8);
+        if (c >= 4 && c <= 19 && c % 2 === 0) {
+          this.add
+            .image(px, 188, 'palace_tiles', TileIndex.MARBLE_BALUSTRADE_H)
+            .setDepth(9);
+        }
+      }
+
+      addProp(SCENE_W / 2 - 22, 198, 'marble_stairs_tall', 8);
+      addProp(SCENE_W / 2 + 22, 198, 'marble_stairs_tall', 8);
+      this.add
+        .image(
+          SCENE_W / 2,
+          198,
+          'palace_tiles',
+          TileIndex.MARBLE_DRAGON_CARVING
+        )
+        .setDepth(9);
+
+      // 殿前石燈、鎏金銅香爐與分簇古樹（來自江南圖集下半部獨立樹冠）
+      addProp(222, 228, 'stone_lantern_a', 13);
+      addProp(354, 228, 'stone_lantern_b', 13);
+      this.add
+        .image(196, 206, 'palace_tiles', TileIndex.BRONZE_INCENSE)
+        .setDepth(12);
+      this.add
+        .image(380, 206, 'palace_tiles', TileIndex.BRONZE_INCENSE)
+        .setDepth(12);
+
+      // 樹下陰影與分簇樹冠
+      shadowGfx.fillStyle(0x0d0907, 0.24);
+      shadowGfx.fillEllipse(142, 212, 46, 14);
+      shadowGfx.fillEllipse(434, 212, 46, 14);
+      shadowGfx.fillEllipse(28, 228, 48, 14);
+      shadowGfx.fillEllipse(548, 228, 48, 14);
+
+      addProp(142, 178, 'tree_cluster_a', 12);
+      addProp(434, 178, 'tree_cluster_b', 12);
+      addProp(28, 194, 'tree_cluster_c', 12);
+      addProp(548, 194, 'tree_cluster_d', 12);
+    } else {
+      // 安全後備繪製
+      for (let c = 5; c <= 18; c++) {
+        const px = c * TILE_SIZE + TILE_SIZE / 2;
+        this.add.image(px, 96, 'palace_tiles', TileIndex.ROOF_GOLD_RIDGE).setDepth(8);
+        this.add.image(px, 120, 'palace_tiles', TileIndex.ROOF_GOLD_SLOPE).setDepth(8);
+        this.add.image(px, 144, 'palace_tiles', TileIndex.ROOF_EAVE_GOLD).setDepth(8);
+        this.add.image(px, 168, 'palace_tiles', TileIndex.RED_WALL_BASE).setDepth(7);
+      }
+    }
+
+    // 5. 殿前漢白玉御道上的康、雍、乾三朝皇帝（1:1 整數像素，配合攝影機整數倍縮放）
+    const emperorY = 254;
+    const kx = this.add
+      .sprite(SCENE_W / 2 - 54, emperorY, 'char_kangxi_emperor', CHAR_IDLE_FRAME.down)
+      .setOrigin(0.5, 0.92)
+      .setDepth(16);
+    const yz = this.add
+      .sprite(SCENE_W / 2, emperorY, 'char_yongzheng_emperor', CHAR_IDLE_FRAME.down)
+      .setOrigin(0.5, 0.92)
+      .setDepth(16);
+    const ql = this.add
+      .sprite(SCENE_W / 2 + 54, emperorY, 'char_qianlong_emperor', CHAR_IDLE_FRAME.down)
+      .setOrigin(0.5, 0.92)
+      .setDepth(16);
+
+    kx.play('char_kangxi_emperor_down');
+    yz.play('char_yongzheng_emperor_down');
+    ql.play('char_qianlong_emperor_down');
+
+    // 6. 頂部描金宮匾標題（寬 348px、高 54px，確保直向窄螢幕與橫向低螢幕皆不溢出）
+    const plaqueW = 348;
+    const plaqueH = 54;
+    const plaqueX = Math.floor((SCENE_W - plaqueW) / 2);
+    const plaqueY = FOCAL_TOP_Y;
+
+    const plaque = this.add.graphics().setDepth(25);
+    plaque.fillStyle(0x781912, 0.96);
+    plaque.fillRect(plaqueX, plaqueY, plaqueW, plaqueH);
+    plaque.lineStyle(3, 0xf0c246, 1);
+    plaque.strokeRect(plaqueX, plaqueY, plaqueW, plaqueH);
+    plaque.lineStyle(1, 0x3b100b, 1);
+    plaque.strokeRect(plaqueX + 5, plaqueY + 5, plaqueW - 10, plaqueH - 10);
+
+    this.add
+      .text(SCENE_W / 2, plaqueY + 20, TITLE, {
+        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
+        fontSize: '19px',
+        color: '#ffe89e',
+        fontStyle: 'bold',
+        stroke: '#38100a',
+        strokeThickness: 3
+      })
+      .setOrigin(0.5)
+      .setDepth(26);
+
+    this.add
+      .text(SCENE_W / 2, plaqueY + 41, '香港小學六年級常識科・單一主畫面高密度像素版', {
+        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
+        fontSize: '11.5px',
+        color: '#fff5df'
+      })
+      .setOrigin(0.5)
+      .setDepth(26);
+
+    // 7. 呼叫現有 HudUI 渲染標題選單（保持導航與流程一字不改）
+    const ui = this.registry.get('ui') as HudUI;
+    ui.setNavigationHandlers({});
+    ui.renderTitleScreen(
+      () => {
+        gameState.startSequentialMode();
+        this.scene.start('OpeningScene', {
+          stageName: STAGE_NAMES.kangxi
+        });
+      },
+      () => {
+        gameState.enterClassSelectMode();
+        this.scene.start('ClassSelectScene');
+      }
+    );
+
+    // 8. 依據裝置方向與選單實際高度動態對齊視窗，徹底解決手機橫向選單遮擋殿前角色問題
+    this.syncViewportAndTitleDock(this.scale.width, this.scale.height);
+    this.rafId = window.requestAnimationFrame(() => {
+      if (this.scene.isActive()) {
+        this.syncViewportAndTitleDock(this.scale.width, this.scale.height);
+      }
+    });
+
+    const onResize = (gameSize: Phaser.Structs.Size) => {
+      this.syncViewportAndTitleDock(gameSize.width, gameSize.height);
+    };
+    this.scale.on('resize', onResize);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.scale.off('resize', onResize);
+      if (this.rafId !== null) {
+        window.cancelAnimationFrame(this.rafId);
+        this.rafId = null;
+      }
+    });
+  }
+
+  /**
+   * 同步調整下方選單緊湊度（僅針對低高度橫向視窗改為雙欄並排）並計算整數倍像素縮放，
+   * 將「宮匾＋重簷主殿＋殿前三位皇帝」精準置於選單上方的無遮擋可視區中央。
+   */
+  private syncViewportAndTitleDock(viewW: number, viewH: number): void {
+    const dock = document.querySelector<HTMLElement>(
+      '#hud-main-layer .title-dock'
+    );
+    const btnStack = dock?.querySelector<HTMLElement>('.btn-stack');
+    const buttons = dock?.querySelectorAll<HTMLButtonElement>('.pixel-btn');
+    const noteEl = dock?.lastElementChild as HTMLElement | null;
+
+    const isCompactLandscape = viewW > viewH && viewH < 560;
+    const isMediumLandscape = viewW >= 560 && viewH >= 560 && viewH < 740;
+
+    if (dock && btnStack) {
+      if (isCompactLandscape || isMediumLandscape) {
+        // 手機橫向與較矮橫向螢幕：選單按鈕改為左右並排緊湊列，大幅釋放縱向視野
+        dock.style.padding = isCompactLandscape ? '6px 10px' : '9px 14px';
+        dock.style.bottom = isCompactLandscape ? '6px' : '12px';
+        dock.style.width = 'min(92vw, 520px)';
+        dock.style.gap = isCompactLandscape ? '4px' : '6px';
+
+        btnStack.style.display = 'flex';
+        btnStack.style.flexDirection = 'row';
+        btnStack.style.gap = '8px';
+
+        buttons?.forEach((btn) => {
+          btn.style.flex = '1 1 0';
+          btn.style.padding = isCompactLandscape ? '7px 10px' : '9px 12px';
+          btn.style.fontSize = isCompactLandscape ? '13.5px' : '15px';
+        });
+
+        if (noteEl && noteEl !== btnStack) {
+          noteEl.style.fontSize = isCompactLandscape ? '10.5px' : '11.5px';
+          noteEl.style.display = viewH < 350 ? 'none' : 'block';
+        }
+      } else {
+        // 直向手機、iPad 與高螢幕電腦：維持原有預設垂直選單樣式
+        dock.style.cssText = '';
+        btnStack.style.cssText = '';
+        buttons?.forEach((btn) => {
+          btn.style.cssText = '';
+        });
+        if (noteEl && noteEl !== btnStack) {
+          noteEl.style.cssText = '';
+          noteEl.style.fontSize = '12px';
+          noteEl.style.color = '#dfd4c3';
+          noteEl.style.textAlign = 'center';
+          noteEl.style.lineHeight = '1.4';
+        }
+      }
+    }
+
+    // 量測下方選單實際頂端位置，計算無遮擋安全可視高度
+    const dockRect = dock?.getBoundingClientRect();
+    const dockTop =
+      dockRect && dockRect.height > 0 ? dockRect.top : viewH - 110;
+
+    const safeTop = 6;
+    const safeBottom = Math.max(
+      safeTop + 170,
+      Math.min(viewH - 6, dockTop - 6)
+    );
+    const availH = safeBottom - safeTop;
+
+    // 嚴格採用整數倍像素縮放（1x / 2x / 3x），絕不使用小數縮放造成模糊
+    const zoomByW = Math.floor(viewW / FOCAL_W);
+    const zoomByH = Math.floor(availH / FOCAL_H);
+    const zoom = Math.max(1, Math.min(3, Math.min(zoomByW, zoomByH)));
+
+    const safeCenterScreenY = (safeTop + safeBottom) / 2;
+    const camWorldY = Math.round(
+      FOCAL_CENTER_Y + (viewH / 2 - safeCenterScreenY) / zoom
+    );
+
+    const cam = this.cameras.main;
+    cam.setZoom(zoom);
+    cam.centerOn(SCENE_W / 2, camWorldY);
+  }
+
+  public update(_time: number, delta: number): void {
+    for (const c of this.clouds) {
+      c.x += delta * 0.014;
+      if (c.x > SCENE_W + 260) {
+        c.x = -260;
+      }
+    }
+  }
+}
