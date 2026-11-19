@@ -1,0 +1,700 @@
+:root {
+  --bg-lacquer: #170f0c;
+  --palace-red: #9c2820;
+  --palace-red-dark: #681711;
+  --gold-accent: #e8ba4b;
+  --gold-bright: #ffe48a;
+  --jade-panel: rgba(250, 244, 231, 0.95);
+  --dark-glass: rgba(28, 17, 13, 0.82);
+  --ink-dark: #241813;
+  --ink-muted: #5c4738;
+  --jade-green: #256e54;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  background: #140c09;
+  color: var(--ink-dark);
+  font-family: 'PingFang HK', 'Microsoft JhengHei', 'Noto Sans TC', sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+#app-root,
+#game-stage {
+  position: relative;
+  width: 100vw;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+#game-canvas-host {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+#game-canvas-host canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: -webkit-optimize-contrast;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* 疊加於單一主畫面上的 HUD 容器 */
+#hud-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20;
+}
+
+#hud-main-layer,
+#hud-settings-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* 右上角固定「設定」按鍵 */
+#hud-top-right {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top, 12px));
+  right: max(12px, env(safe-area-inset-right, 12px));
+  z-index: 50;
+  pointer-events: auto;
+}
+
+.settings-fab {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 2px solid var(--gold-accent);
+  background: rgba(38, 21, 15, 0.88);
+  color: #fff6e0;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px);
+}
+
+.settings-fab:active {
+  transform: translateY(1px);
+}
+
+/* 左上角半透明探索狀態與證據列（不遮擋中央主角） */
+.hud-status-card {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top, 12px));
+  left: max(12px, env(safe-area-inset-left, 12px));
+  max-width: min(72vw, 430px);
+  background: var(--dark-glass);
+  border: 1.5px solid rgba(232, 186, 75, 0.78);
+  border-radius: 10px;
+  padding: 8px 11px;
+  color: #fff7e6;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.hud-status-top {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.hud-stage-pill {
+  background: var(--palace-red);
+  border: 1px solid var(--gold-accent);
+  padding: 2px 7px;
+  border-radius: 5px;
+  color: var(--gold-bright);
+  font-size: 12px;
+}
+
+.hud-zone-text {
+  color: #fff8e7;
+}
+
+.hud-hint-line {
+  font-size: 12px;
+  line-height: 1.38;
+  color: #ffe8a3;
+  font-weight: 600;
+}
+
+.checklist-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.check-chip {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 235, 190, 0.35);
+  background: rgba(255, 255, 255, 0.1);
+  color: #dfd4c3;
+  font-weight: 600;
+}
+
+.check-chip.done {
+  border-color: #63d9a8;
+  background: rgba(37, 110, 84, 0.72);
+  color: #eafff5;
+}
+
+/* 左下角圓形虛擬搖桿 */
+.joystick-zone {
+  position: absolute;
+  left: max(18px, env(safe-area-inset-left, 18px));
+  bottom: max(18px, env(safe-area-inset-bottom, 18px));
+  width: 128px;
+  height: 128px;
+  pointer-events: auto;
+  touch-action: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.joystick-base {
+  position: relative;
+  width: 118px;
+  height: 118px;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(56, 36, 26, 0.52) 0%,
+    rgba(26, 16, 12, 0.78) 100%
+  );
+  border: 2.5px solid rgba(232, 186, 75, 0.72);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45),
+    inset 0 0 10px rgba(255, 224, 130, 0.15);
+  backdrop-filter: blur(3px);
+}
+
+.joystick-tick {
+  position: absolute;
+  color: rgba(255, 232, 168, 0.52);
+  font-size: 11px;
+  font-weight: 800;
+  pointer-events: none;
+}
+
+.joystick-tick.up {
+  top: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.joystick-tick.down {
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.joystick-tick.left {
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.joystick-tick.right {
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.joystick-knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 50px;
+  height: 50px;
+  margin-left: -25px;
+  margin-top: -25px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffe28a 0%, #c98f24 75%, #8c5c11 100%);
+  border: 2px solid #fff5d1;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  transition: transform 0.04s linear;
+}
+
+.joystick-base.active .joystick-knob {
+  transition: none;
+  filter: brightness(1.08);
+}
+
+/* 右下角「調查／傾談」單一互動大鍵 */
+.interact-zone {
+  position: absolute;
+  right: max(18px, env(safe-area-inset-right, 18px));
+  bottom: max(22px, env(safe-area-inset-bottom, 22px));
+  pointer-events: auto;
+  touch-action: manipulation;
+}
+
+.hud-interact-btn {
+  appearance: none;
+  min-width: 126px;
+  min-height: 82px;
+  padding: 10px 16px;
+  border-radius: 18px;
+  border: 2.5px solid rgba(232, 186, 75, 0.8);
+  background: linear-gradient(
+    180deg,
+    rgba(156, 40, 32, 0.9) 0%,
+    rgba(104, 23, 17, 0.94) 100%
+  );
+  color: #fff8e7;
+  font-family: inherit;
+  cursor: pointer;
+  box-shadow: 0 5px 14px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  backdrop-filter: blur(4px);
+}
+
+.hud-interact-btn.ready {
+  border-color: #fff0a6;
+  background: linear-gradient(180deg, #f2c44e 0%, #c98c1c 100%);
+  color: #291606;
+  box-shadow: 0 0 16px rgba(255, 220, 110, 0.55), 0 5px 14px rgba(0, 0, 0, 0.5);
+}
+
+.hud-interact-btn:active {
+  transform: scale(0.96);
+}
+
+.interact-main-label {
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.interact-sub-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  opacity: 0.92;
+  max-width: 138px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 疊加式半透明／卡牌面板（中央或下方） */
+.overlay-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(14, 9, 7, 0.46);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 58px 16px 20px;
+  pointer-events: auto;
+}
+
+.overlay-bottom-wrap {
+  position: absolute;
+  inset: 0;
+  background: rgba(14, 9, 7, 0.22);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px max(16px, env(safe-area-inset-right, 16px))
+    max(18px, env(safe-area-inset-bottom, 18px))
+    max(16px, env(safe-area-inset-left, 16px));
+  pointer-events: auto;
+}
+
+.card-modal {
+  width: min(100%, 540px);
+  max-height: calc(100dvh - 78px);
+  overflow-y: auto;
+  background: var(--jade-panel);
+  border: 3px solid #8c5e2b;
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 0 0 2px #2b1810, 0 12px 32px rgba(0, 0, 0, 0.65);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  touch-action: pan-y;
+}
+
+.dialogue-modal {
+  width: min(100%, 660px);
+  background: rgba(252, 247, 236, 0.96);
+  border: 3px solid #8c5e2b;
+  border-radius: 12px;
+  padding: 14px 18px;
+  box-shadow: 0 0 0 2px #2b1810, 0 10px 28px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--palace-red);
+  color: #fff8e7;
+  padding: 7px 12px;
+  border: 2px solid #59140f;
+  border-radius: 7px;
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.panel-header .badge-sub {
+  font-size: 12px;
+  color: var(--gold-bright);
+  font-weight: 700;
+}
+
+.panel-box {
+  background: rgba(255, 252, 245, 0.92);
+  border: 2px solid #9e7544;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.dialogue-speaker {
+  display: inline-block;
+  background: var(--palace-red);
+  color: #fff8e7;
+  padding: 4px 12px;
+  border-radius: 5px;
+  border: 1.5px solid #57120d;
+  font-weight: 800;
+  font-size: 14px;
+}
+
+.dialogue-body {
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--ink-dark);
+  font-weight: 700;
+  background: #fffdf9;
+  border: 2px solid #b08854;
+  border-radius: 7px;
+  padding: 12px 14px;
+  min-height: 68px;
+}
+
+/* 按鈕樣式 */
+.pixel-btn {
+  appearance: none;
+  border: 2px solid #591812;
+  background: linear-gradient(180deg, #b8362c 0%, #8c2119 100%);
+  color: #fff9eb;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  padding: 10px 14px;
+  border-radius: 7px;
+  cursor: pointer;
+  box-shadow: 0 2px 0 #3d0f0b;
+  text-align: center;
+  line-height: 1.3;
+  touch-action: manipulation;
+}
+
+.pixel-btn:hover {
+  filter: brightness(1.06);
+}
+
+.pixel-btn:active {
+  transform: translateY(2px);
+  box-shadow: none;
+}
+
+.pixel-btn.secondary {
+  border-color: #4a3b28;
+  background: linear-gradient(180deg, #785b3a 0%, #594127 100%);
+  box-shadow: 0 2px 0 #2e2113;
+}
+
+.pixel-btn.gold {
+  border-color: #6b4b10;
+  background: linear-gradient(180deg, #f4c855 0%, #d19924 100%);
+  color: #2b1808;
+  box-shadow: 0 2px 0 #523809;
+}
+
+.pixel-btn.jade {
+  border-color: #184a39;
+  background: linear-gradient(180deg, #358569 0%, #24634d 100%);
+  color: #f4fff9;
+  box-shadow: 0 2px 0 #123629;
+}
+
+.btn-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.btn-row > .pixel-btn {
+  flex: 1 1 auto;
+}
+
+.hint-banner {
+  font-size: 13.5px;
+  line-height: 1.45;
+  padding: 7px 10px;
+  background: #fff3d1;
+  border: 1.5px solid #c9962c;
+  border-radius: 6px;
+  color: #472e08;
+  font-weight: 700;
+}
+
+.quiz-question {
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.5;
+  color: var(--ink-dark);
+  padding: 8px 10px;
+  background: #fff9eb;
+  border-left: 4px solid var(--palace-red);
+  border-radius: 4px;
+}
+
+.quiz-option {
+  text-align: left;
+  font-size: 14.5px;
+  padding: 10px 12px;
+}
+
+.feedback-msg {
+  font-size: 13.5px;
+  font-weight: 700;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+.feedback-msg.error {
+  background: #fde7e7;
+  color: #9e1c15;
+  border: 1.5px solid #d97772;
+}
+
+.feedback-msg.ok {
+  background: #dcf5e8;
+  color: #17593d;
+  border: 1.5px solid #5ab58d;
+}
+
+/* 密碼鍵盤 */
+.password-display {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 10px;
+  text-align: center;
+  background: #fffdf8;
+  border: 2px solid #7d582d;
+  border-radius: 6px;
+  padding: 8px;
+  min-height: 44px;
+  color: var(--palace-red-dark);
+}
+
+.numpad-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.numpad-btn {
+  padding: 9px 4px;
+  font-size: 17px;
+}
+
+/* 離線問乾隆輸入框 */
+.ask-input {
+  width: 100%;
+  font-family: inherit;
+  font-size: 15px;
+  padding: 9px 11px;
+  border: 2px solid #8a6236;
+  border-radius: 6px;
+  background: #ffffff;
+  color: var(--ink-dark);
+  user-select: text;
+  -webkit-user-select: text;
+  touch-action: auto;
+}
+
+.ask-input:focus {
+  outline: none;
+  border-color: var(--palace-red);
+}
+
+.topic-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.topic-chip-btn {
+  font-size: 12.5px;
+  padding: 4px 8px;
+  background: #efe5cf;
+  border: 1.5px solid #967346;
+  border-radius: 5px;
+  color: #3d2814;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* 標題與分關疊加卡 */
+.title-dock {
+  position: absolute;
+  left: 50%;
+  bottom: max(20px, env(safe-area-inset-bottom, 20px));
+  transform: translateX(-50%);
+  width: min(92vw, 440px);
+  background: rgba(33, 19, 14, 0.88);
+  border: 2.5px solid var(--gold-accent);
+  border-radius: 14px;
+  padding: 14px 16px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(5px);
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.class-select-dock {
+  position: absolute;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom, 16px));
+  transform: translateX(-50%);
+  width: min(94vw, 620px);
+  background: rgba(33, 19, 14, 0.88);
+  border: 2.5px solid var(--gold-accent);
+  border-radius: 14px;
+  padding: 12px 14px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(5px);
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 小遊戲底部輕量疊加工具列 */
+.minigame-bar {
+  position: absolute;
+  left: 50%;
+  bottom: max(10px, env(safe-area-inset-bottom, 10px));
+  transform: translateX(-50%);
+  width: min(95vw, 760px);
+  background: rgba(28, 17, 13, 0.9);
+  border: 2px solid rgba(232, 186, 75, 0.85);
+  border-radius: 12px;
+  padding: 8px 12px;
+  color: #fff6e5;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.minigame-bar-info {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12.5px;
+  line-height: 1.38;
+  font-weight: 600;
+}
+
+.minigame-bar-actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.minigame-bar-actions .pixel-btn {
+  padding: 7px 11px;
+  font-size: 13px;
+}
+
+@media (max-width: 600px) {
+  .hud-status-card {
+    max-width: calc(100vw - 118px);
+    padding: 6px 9px;
+  }
+  .joystick-zone {
+    width: 112px;
+    height: 112px;
+    left: max(12px, env(safe-area-inset-left, 12px));
+    bottom: max(12px, env(safe-area-inset-bottom, 12px));
+  }
+  .joystick-base {
+    width: 104px;
+    height: 104px;
+  }
+  .joystick-knob {
+    width: 44px;
+    height: 44px;
+    margin-left: -22px;
+    margin-top: -22px;
+  }
+  .hud-interact-btn {
+    min-width: 112px;
+    min-height: 74px;
+    padding: 8px 12px;
+  }
+  .minigame-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .minigame-bar-actions {
+    justify-content: flex-end;
+  }
+}

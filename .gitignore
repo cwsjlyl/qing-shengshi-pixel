@@ -1,0 +1,6 @@
+node_modules/
+dist/
+boot-test*/
+.DS_Store
+*.log
+logs/
