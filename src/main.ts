@@ -11,20 +11,40 @@ import { OpeningScene } from './scenes/OpeningScene';
 import { PreloadScene } from './scenes/PreloadScene';
 import { TitleScene } from './scenes/TitleScene';
 import { HudUI } from './ui/HudUI';
-import { gameState } from './state/gameState';
 
 const ui = new HudUI('hud-overlay');
+
+/** iPad Safari: prefer visualViewport so Phaser size matches the painted canvas. */
+function readViewportSize(): { width: number; height: number } {
+  const vv = window.visualViewport;
+  if (vv && vv.width > 0 && vv.height > 0) {
+    return {
+      width: Math.max(1, Math.floor(vv.width)),
+      height: Math.max(1, Math.floor(vv.height))
+    };
+  }
+  return {
+    width: Math.max(1, Math.floor(window.innerWidth)),
+    height: Math.max(1, Math.floor(window.innerHeight))
+  };
+}
+
+const initialSize = readViewportSize();
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   parent: 'game-canvas-host',
-  width: window.innerWidth,
-  height: window.innerHeight,
+  width: initialSize.width,
+  height: initialSize.height,
   backgroundColor: '#1a100c',
   pixelArt: true,
   roundPixels: true,
   antialias: false,
   antialiasGL: false,
+  input: {
+    activePointers: 3,
+    smoothFactor: 0
+  },
   scale: {
     mode: Phaser.Scale.RESIZE,
     autoCenter: Phaser.Scale.NO_CENTER
@@ -49,3 +69,20 @@ const config: Phaser.Types.Core.GameConfig = {
 };
 
 const game = new Phaser.Game(config);
+
+function syncGameToVisualViewport(): void {
+  const { width, height } = readViewportSize();
+  if (game.scale.width !== width || game.scale.height !== height) {
+    game.scale.resize(width, height);
+  }
+}
+
+window.addEventListener('resize', syncGameToVisualViewport);
+window.addEventListener('orientationchange', () => {
+  window.setTimeout(syncGameToVisualViewport, 50);
+  window.setTimeout(syncGameToVisualViewport, 250);
+});
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', syncGameToVisualViewport);
+  window.visualViewport.addEventListener('scroll', syncGameToVisualViewport);
+}

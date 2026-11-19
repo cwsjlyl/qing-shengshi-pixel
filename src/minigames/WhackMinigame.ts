@@ -44,6 +44,7 @@ export class WhackMinigame extends Phaser.Scene {
     this.isEnded = false;
 
     this.cameras.main.setBackgroundColor('#261611');
+    this.input.setTopOnly(false);
     this.fitViewport(this.scale.width, this.scale.height);
 
     const onResize = (gameSize: Phaser.Structs.Size) => {
@@ -116,8 +117,9 @@ export class WhackMinigame extends Phaser.Scene {
         popContainer.add([spr, tagBg, tagText]);
 
         const hitZone = this.add
-          .rectangle(cx, cy, 132, 118, 0xffffff, 0.001)
-          .setInteractive({ useHandCursor: true });
+          .rectangle(cx, cy, 148, 132, 0xffffff, 0.001)
+          .setDepth(30)
+          .setInteractive({ useHandCursor: true, pixelPerfect: false });
 
         const cell: WindowCell = {
           x: cx,

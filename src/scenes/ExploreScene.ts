@@ -69,6 +69,7 @@ export class ExploreScene extends Phaser.Scene {
     const worldH = this.mapData.rows * TILE_SIZE;
     this.cameras.main.setBackgroundColor('#160f0c');
     this.cameras.main.setRoundPixels(true);
+    this.input.setTopOnly(false);
 
     // 1. 原創多變體地面層、建築投影陰影層與基礎瓷磚裝飾層
     const shadowGraphics = this.add.graphics().setDepth(2);
@@ -123,8 +124,12 @@ export class ExploreScene extends Phaser.Scene {
           Math.round(this.mapData.boatPosition.tileY * TILE_SIZE),
           'royal_boat'
         )
-        .setDepth(8.5)
-        .setInteractive({ useHandCursor: true });
+        .setDepth(8.5);
+      this.royalBoatSprite.setInteractive(
+        new Phaser.Geom.Rectangle(-48, -36, 96, 72),
+        Phaser.Geom.Rectangle.Contains
+      );
+      this.royalBoatSprite.input!.cursor = 'pointer';
 
       this.royalBoatSprite.on('pointerdown', () => {
         const ui = this.registry.get('ui') as HudUI;
@@ -160,8 +165,12 @@ export class ExploreScene extends Phaser.Scene {
         const npcSprite = this.add
           .sprite(tx, ty + 2, trig.spriteKey, frame)
           .setOrigin(0.5, 0.92)
-          .setDepth(10 + trig.tileY * 0.1)
-          .setInteractive({ useHandCursor: true });
+          .setDepth(10 + trig.tileY * 0.1);
+        npcSprite.setInteractive(
+          new Phaser.Geom.Rectangle(-28, -52, 56, 64),
+          Phaser.Geom.Rectangle.Contains
+        );
+        npcSprite.input!.cursor = 'pointer';
 
         npcSprite.on('pointerdown', () => {
           const ui = this.registry.get('ui') as HudUI;
@@ -314,6 +323,7 @@ export class ExploreScene extends Phaser.Scene {
 
     this.updateNearbyTrigger();
     this.renderExplorePanel();
+    this.refreshMinimap();
   }
 
   /**
@@ -326,10 +336,13 @@ export class ExploreScene extends Phaser.Scene {
     style.id = COMPACT_HUD_STYLE_ID;
     style.textContent = `
       .hud-status-card {
-        max-width: min(332px, calc(100vw - 118px)) !important;
+        max-width: min(300px, calc(100vw - 160px)) !important;
         padding: 7px 10px !important;
         gap: 4px !important;
         backdrop-filter: blur(3px);
+      }
+      #hud-overlay.explore-with-minimap .hud-status-card {
+        /* keep beside / below minimap from global CSS */
       }
       .hud-status-card .hud-hint-line {
         font-size: 12px !important;
@@ -494,6 +507,37 @@ export class ExploreScene extends Phaser.Scene {
       nearbyLabel: this.activeTrigger?.label || null,
       onInteract: () => this.interactWithNearest()
     });
+    this.refreshMinimap();
+  }
+
+  /** Top-left semi-transparent virtual map: buildings, investigate targets, exits, player. */
+  private refreshMinimap(): void {
+    const ui = this.registry.get('ui') as HudUI;
+    if (!this.mapData || !this.player) return;
+
+    const cam = this.cameras.main;
+    const worldView = cam.worldView;
+    const viewTiles = {
+      x1: worldView.x / TILE_SIZE,
+      y1: worldView.y / TILE_SIZE,
+      x2: (worldView.x + worldView.width) / TILE_SIZE,
+      y2: (worldView.y + worldView.height) / TILE_SIZE
+    };
+
+    ui.updateExploreMinimap({
+      cols: this.mapData.cols,
+      rows: this.mapData.rows,
+      solid: this.mapData.solid,
+      triggers: this.mapData.triggers.map((t) => ({
+        id: t.id,
+        kind: t.kind,
+        tileX: t.tileX,
+        tileY: t.tileY
+      })),
+      playerTileX: this.player.x / TILE_SIZE,
+      playerTileY: this.player.y / TILE_SIZE,
+      viewTiles
+    });
   }
 
   private computeCurrentStageHint(): string {
@@ -632,6 +676,7 @@ export class ExploreScene extends Phaser.Scene {
       this.getCurrentZoneName(),
       this.activeTrigger?.label || null
     );
+    this.refreshMinimap();
   }
 
   private tryMovePlayer(dx: number, dy: number): void {

@@ -65,6 +65,7 @@ export class SouthernTourMinigame extends Phaser.Scene {
     this.bankProps = [];
 
     this.cameras.main.setBackgroundColor('#216878');
+    this.input.setTopOnly(false);
     this.fitViewport(this.scale.width, this.scale.height);
 
     const onResize = (gameSize: Phaser.Structs.Size) => {
@@ -107,8 +108,9 @@ export class SouthernTourMinigame extends Phaser.Scene {
 
     LANE_Y.forEach((ly, idx) => {
       const zone = this.add
-        .rectangle(STAGE_W / 2, ly, STAGE_W + 200, 64, 0xffffff, 0.001)
-        .setInteractive({ useHandCursor: true });
+        .rectangle(STAGE_W / 2, ly, STAGE_W + 200, 78, 0xffffff, 0.001)
+        .setDepth(15)
+        .setInteractive({ useHandCursor: true, pixelPerfect: false });
       zone.on('pointerdown', () => {
         if (!this.ended) this.setBoatLane(idx);
       });
@@ -166,11 +168,43 @@ export class SouthernTourMinigame extends Phaser.Scene {
       .setOrigin(0, 0.5)
       .setDepth(32);
 
-    // 雕龍御船（縮放適配航道高度）
+    // 雕龍御船（縮放適配航道高度；可點按／拖曳換航道）
     this.boat = this.add
       .image(102, LANE_Y[this.currentLane], 'royal_boat')
       .setScale(0.75)
       .setDepth(20);
+    this.boat.setInteractive(
+      new Phaser.Geom.Rectangle(-56, -36, 112, 72),
+      Phaser.Geom.Rectangle.Contains
+    );
+    this.boat.input!.cursor = 'pointer';
+    this.input.setDraggable(this.boat);
+    this.boat.on('pointerdown', () => {
+      // keep focus; lane change via drag or lane zones
+    });
+    this.boat.on(
+      'drag',
+      (_pointer: Phaser.Input.Pointer, _dragX: number, dragY: number) => {
+        if (this.ended) return;
+        // Keep X fixed; snap vertically to nearest lane (no per-frame tweens)
+        let best = this.currentLane;
+        let bestDist = Number.POSITIVE_INFINITY;
+        for (let i = 0; i < LANE_Y.length; i++) {
+          const d = Math.abs(dragY - LANE_Y[i]);
+          if (d < bestDist) {
+            bestDist = d;
+            best = i;
+          }
+        }
+        this.currentLane = best;
+        this.boat.setPosition(102, LANE_Y[best]);
+      }
+    );
+    this.boat.on('dragend', () => {
+      if (this.ended) return;
+      this.boat.x = 102;
+      this.setBoatLane(this.currentLane);
+    });
 
     if (this.input.keyboard) {
       this.cursors = this.input.keyboard.createCursorKeys();

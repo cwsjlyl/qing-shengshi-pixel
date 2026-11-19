@@ -86,13 +86,16 @@ export class ClassSelectScene extends Phaser.Scene {
       });
     };
 
+    // iPad: allow taps on overlapping card / doll hit pads
+    this.input.setTopOnly(false);
+
     cards.forEach((c, idx) => {
       const cx = 112 + idx * 176;
       const cy = 196;
       const done = gameState.completedClassStages.has(c.id);
 
       const card = this.add
-        .rectangle(cx, cy, 158, 214, c.bg, 0.96)
+        .rectangle(cx, cy, 170, 230, c.bg, 0.96)
         .setStrokeStyle(3, done ? 0x6ee6a8 : 0xe8ba4b)
         .setInteractive({ useHandCursor: true });
 
@@ -100,8 +103,22 @@ export class ClassSelectScene extends Phaser.Scene {
 
       const emp = this.add
         .sprite(cx, cy - 34, c.sprite, CHAR_IDLE_FRAME.down)
-        .setScale(2.2);
+        .setScale(2.2)
+        .setDepth(5);
       emp.play(`${c.sprite}_down`);
+      emp.setInteractive(
+        new Phaser.Geom.Rectangle(-28, -40, 56, 72),
+        Phaser.Geom.Rectangle.Contains
+      );
+      emp.input!.cursor = 'pointer';
+      emp.on('pointerdown', () => pickStage(c.id));
+
+      // Extra generous pad over whole card (covers doll + labels)
+      const pad = this.add
+        .rectangle(cx, cy, 178, 240, 0xffffff, 0.001)
+        .setDepth(6)
+        .setInteractive({ useHandCursor: true });
+      pad.on('pointerdown', () => pickStage(c.id));
 
       this.add
         .text(cx, cy + 36, STAGE_NAMES[c.id], {
@@ -110,7 +127,8 @@ export class ClassSelectScene extends Phaser.Scene {
           color: '#fff8e7',
           fontStyle: 'bold'
         })
-        .setOrigin(0.5);
+        .setOrigin(0.5)
+        .setDepth(7);
 
       this.add
         .text(cx, cy + 62, c.desc, {
@@ -118,7 +136,8 @@ export class ClassSelectScene extends Phaser.Scene {
           fontSize: '12px',
           color: '#e8dec8'
         })
-        .setOrigin(0.5);
+        .setOrigin(0.5)
+        .setDepth(7);
 
       if (done) {
         this.add
@@ -128,7 +147,8 @@ export class ClassSelectScene extends Phaser.Scene {
             color: '#98ffd0',
             fontStyle: 'bold'
           })
-          .setOrigin(0.5);
+          .setOrigin(0.5)
+          .setDepth(7);
       }
     });
 
@@ -140,13 +160,35 @@ export class ClassSelectScene extends Phaser.Scene {
       (stageId) => pickStage(stageId),
       () => this.scene.start('TitleScene')
     );
+
+    // Re-fit after dock HTML mounts so cards stay above the dock on iPad
+    this.time.delayedCall(0, () => {
+      if (this.scene.isActive()) {
+        this.fitViewport(this.scale.width, this.scale.height);
+      }
+    });
   }
 
   private fitViewport(w: number, h: number): void {
     const cam = this.cameras.main;
-    const rawZoom = Math.min(w / SCENE_W, h / SCENE_H);
+    const dock = document.querySelector<HTMLElement>(
+      '#hud-main-layer .class-select-dock'
+    );
+    const dockRect = dock?.getBoundingClientRect();
+    const dockTop =
+      dockRect && dockRect.height > 0 ? dockRect.top : h - 120;
+    const safeBottom = Math.max(180, Math.min(h - 4, dockTop - 8));
+    const availH = Math.max(180, safeBottom - 8);
+
+    const rawZoom = Math.min(w / SCENE_W, availH / SCENE_H);
     const zoom = rawZoom >= 1 ? Math.max(1, Math.floor(rawZoom)) : rawZoom;
     cam.setZoom(zoom);
-    cam.centerOn(SCENE_W / 2, SCENE_H / 2 + 16);
+
+    // Keep cards centred in the safe band above the dock
+    const safeCenterScreenY = (8 + safeBottom) / 2;
+    const camWorldY = Math.round(
+      SCENE_H / 2 + 8 + (h / 2 - safeCenterScreenY) / zoom
+    );
+    cam.centerOn(SCENE_W / 2, camWorldY);
   }
 }

@@ -46,14 +46,14 @@ body {
   height: 100%;
 }
 
+/* Let Phaser Scale set canvas CSS size so touch coords match game size (iPad). */
 #game-canvas-host canvas {
   display: block;
-  width: 100% !important;
-  height: 100% !important;
   image-rendering: -moz-crisp-edges;
   image-rendering: -webkit-optimize-contrast;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
+  touch-action: none;
 }
 
 /* 疊加於單一主畫面上的 HUD 容器 */
@@ -119,6 +119,87 @@ body {
   display: flex;
   flex-direction: column;
   gap: 5px;
+}
+
+/* 探索畫面：左上虛擬小地圖（半透明，不攔截觸控） */
+#hud-minimap-host {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top, 10px));
+  left: max(10px, env(safe-area-inset-left, 10px));
+  z-index: 24;
+  pointer-events: none;
+}
+
+.explore-minimap {
+  width: 136px;
+  height: 104px;
+  border-radius: 10px;
+  border: 1.5px solid rgba(232, 186, 75, 0.72);
+  background: rgba(18, 11, 8, 0.55);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(2px);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.explore-minimap canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  pointer-events: none;
+}
+
+/* 有小地圖時，狀態卡移到小地圖右側（寬螢幕）或下方（窄螢幕） */
+#hud-overlay.explore-with-minimap .hud-status-card {
+  left: calc(max(10px, env(safe-area-inset-left, 10px)) + 148px);
+  max-width: min(48vw, 320px);
+}
+
+@media (max-width: 720px) {
+  .explore-minimap {
+    width: 118px;
+    height: 90px;
+  }
+  #hud-overlay.explore-with-minimap .hud-status-card {
+    top: calc(max(10px, env(safe-area-inset-top, 10px)) + 98px);
+    left: max(12px, env(safe-area-inset-left, 12px));
+    max-width: min(72vw, 360px);
+  }
+}
+
+@media (max-height: 480px) and (orientation: landscape) {
+  .explore-minimap {
+    width: 108px;
+    height: 80px;
+  }
+  #hud-overlay.explore-with-minimap .hud-status-card {
+    top: max(10px, env(safe-area-inset-top, 10px));
+    left: calc(max(10px, env(safe-area-inset-left, 10px)) + 118px);
+    max-width: min(42vw, 280px);
+  }
+}
+
+/* 主頁左上角校徽 */
+.title-school-logo {
+  position: absolute;
+  top: max(8px, env(safe-area-inset-top, 8px));
+  left: max(8px, env(safe-area-inset-left, 8px));
+  width: min(16vw, 88px);
+  height: auto;
+  max-height: 64px;
+  object-fit: contain;
+  z-index: 28;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.5));
+}
+
+@media (max-height: 420px) and (orientation: landscape) {
+  .title-school-logo {
+    width: min(12vw, 64px);
+    max-height: 44px;
+  }
 }
 
 .hud-status-top {
@@ -608,19 +689,43 @@ body {
 .class-select-dock {
   position: absolute;
   left: 50%;
-  bottom: max(16px, env(safe-area-inset-bottom, 16px));
+  bottom: max(12px, env(safe-area-inset-bottom, 12px));
   transform: translateX(-50%);
   width: min(94vw, 620px);
   background: rgba(33, 19, 14, 0.88);
   border: 2.5px solid var(--gold-accent);
   border-radius: 14px;
-  padding: 12px 14px;
+  padding: 10px 12px;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(5px);
   pointer-events: auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
+  z-index: 30;
+}
+
+@media (max-height: 700px) {
+  .class-select-dock {
+    padding: 8px 10px;
+    gap: 5px;
+  }
+  .class-select-dock .pixel-btn {
+    padding: 8px 10px;
+    font-size: 13.5px;
+  }
+}
+
+@media (max-height: 520px) and (orientation: landscape) {
+  .class-select-dock {
+    width: min(96vw, 720px);
+    flex-direction: row;
+    align-items: center;
+    bottom: max(6px, env(safe-area-inset-bottom, 6px));
+  }
+  .class-select-dock .btn-row {
+    flex: 1 1 auto;
+  }
 }
 
 /* 小遊戲底部輕量疊加工具列 */

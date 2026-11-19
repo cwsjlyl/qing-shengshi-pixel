@@ -46,6 +46,7 @@ export class ArcheryMinigame extends Phaser.Scene {
     this.aimAngle = -Math.PI / 2;
 
     this.cameras.main.setBackgroundColor('#c4a974');
+    this.input.setTopOnly(false);
     this.fitViewport(this.scale.width, this.scale.height);
 
     const onResize = (gameSize: Phaser.Structs.Size) => {
@@ -123,7 +124,7 @@ export class ArcheryMinigame extends Phaser.Scene {
     // 觸控與滑鼠世界座標瞄準發射
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
       if (this.ended) return;
-      this.aimAtPoint(p.worldX, p.worldY);
+      if (p.isDown) this.aimAtPoint(p.worldX, p.worldY);
     });
 
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
