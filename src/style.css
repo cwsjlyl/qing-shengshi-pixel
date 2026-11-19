@@ -680,10 +680,15 @@ body {
   padding: 14px 16px;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(5px);
-  pointer-events: auto;
+  /* Let canvas receive taps; only real buttons capture pointer */
+  pointer-events: none;
   display: flex;
   flex-direction: column;
   gap: 9px;
+}
+.title-dock .pixel-btn,
+.title-dock button {
+  pointer-events: auto;
 }
 
 .class-select-dock {
@@ -698,11 +703,16 @@ body {
   padding: 10px 12px;
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(5px);
-  pointer-events: auto;
+  /* Dock chrome must not steal emperor-card taps on iPad */
+  pointer-events: none;
   display: flex;
   flex-direction: column;
   gap: 6px;
   z-index: 30;
+}
+.class-select-dock .pixel-btn,
+.class-select-dock button {
+  pointer-events: auto;
 }
 
 @media (max-height: 700px) {
@@ -742,11 +752,17 @@ body {
   color: #fff6e5;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(4px);
-  pointer-events: auto;
+  /* Instruction text must not block canvas drag/tap on iPad */
+  pointer-events: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+.minigame-bar-actions,
+.minigame-bar-actions .pixel-btn,
+.minigame-bar button {
+  pointer-events: auto;
 }
 
 .minigame-bar-info {

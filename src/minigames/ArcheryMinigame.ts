@@ -121,15 +121,28 @@ export class ArcheryMinigame extends Phaser.Scene {
     const guideDot = this.add.rectangle(0, -30, 4, 15, 0xffe48a, 1);
     this.bowContainer.add([bowArc, guideDot]);
 
-    // 觸控與滑鼠世界座標瞄準發射
+    // iPad-safe: convert screen pointer → camera world, then aim/fire
+    const pointerWorld = (p: Phaser.Input.Pointer) =>
+      this.cameras.main.getWorldPoint(p.x, p.y);
+
     this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
       if (this.ended) return;
-      if (p.isDown) this.aimAtPoint(p.worldX, p.worldY);
+      if (p.isDown) {
+        const w = pointerWorld(p);
+        this.aimAtPoint(w.x, w.y);
+      }
     });
 
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       if (this.ended) return;
-      this.aimAtPoint(p.worldX, p.worldY);
+      const w = pointerWorld(p);
+      // Prefer firing toward a tapped target if finger lands on one
+      const tapped = this.findTargetAt(w.x, w.y);
+      if (tapped) {
+        this.aimAtPoint(tapped.container.x, tapped.container.y);
+      } else {
+        this.aimAtPoint(w.x, w.y);
+      }
       this.fireArrow();
     });
 
@@ -153,7 +166,7 @@ export class ArcheryMinigame extends Phaser.Scene {
     ui.renderMinigamePanel({
       title: '射箭平亂挑戰（乾隆朝）',
       instruction:
-        '直接點按主畫面上的移動標靶即可瞄準發射弓箭（電腦亦可用左右鍵瞄準、空白鍵發射），擊倒 6 個標靶即過關！',
+        '用手指點按移動中的叛軍標靶即可朝該目標射箭（電腦亦可用左右鍵瞄準、空白鍵發射），擊倒 6 個標靶即過關！',
       onRetry: () => this.scene.restart(),
       onLeave: () => this.scene.start('ExploreScene')
     });
@@ -182,13 +195,39 @@ export class ArcheryMinigame extends Phaser.Scene {
         padding: { x: 4, y: 1 }
       })
       .setOrigin(0.5);
-    c.add([shield, label]);
+    // Large invisible pad — whole soldier/target is tappable on iPad
+    const pad = this.add.rectangle(0, 0, 100, 92, 0xffffff, 0.001);
+    c.add([shield, label, pad]);
+    c.setInteractive(
+      new Phaser.Geom.Rectangle(-50, -46, 100, 92),
+      Phaser.Geom.Rectangle.Contains
+    );
+    if (c.input) c.input.cursor = 'pointer';
+    c.on('pointerdown', () => {
+      if (this.ended) return;
+      this.aimAtPoint(c.x, c.y);
+      this.fireArrow();
+    });
 
     this.targets.push({
       container: c,
       vx: speed,
       active: true
     });
+  }
+
+  private findTargetAt(wx: number, wy: number): RebelTarget | null {
+    let best: RebelTarget | null = null;
+    let bestDist = 56;
+    for (const t of this.targets) {
+      if (!t.active) continue;
+      const d = Phaser.Math.Distance.Between(wx, wy, t.container.x, t.container.y);
+      if (d < bestDist) {
+        bestDist = d;
+        best = t;
+      }
+    }
+    return best;
   }
 
   private aimAtPoint(px: number, py: number): void {
