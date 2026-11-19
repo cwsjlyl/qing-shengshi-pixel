@@ -1296,7 +1296,14 @@ function buildQianlongMap(): StageMapData {
   props.push(
     { frame: 'pier_boat_h', tileX: 46.2, tileY: 16.4, layer: 'building' },
     { frame: 'pier_boat_h', tileX: 45.8, tileY: 25.4, flipX: true, layer: 'building' },
-    { frame: 'pier_boat_v', tileX: 44.2, tileY: 28.8, layer: 'building' }
+    { frame: 'pier_boat_v', tileX: 44.2, tileY: 28.8, layer: 'building' },
+    // Extra escort fleet (do not cover pier walkway 42–48,20–22 or boarding boat)
+    { frame: 'pier_boat_h', tileX: 48.6, tileY: 14.6, scale: 0.92, layer: 'building' },
+    { frame: 'pier_boat_h', tileX: 49.2, tileY: 27.2, flipX: true, scale: 0.9, layer: 'building' },
+    { frame: 'pier_boat_v', tileX: 47.4, tileY: 30.6, scale: 0.95, layer: 'building' },
+    { frame: 'pier_boat_h', tileX: 50.8, tileY: 15.8, flipX: true, scale: 0.85, layer: 'building' },
+    { frame: 'pier_boat_v', tileX: 51.4, tileY: 28.4, scale: 0.88, layer: 'building' },
+    { frame: 'pier_boat_h', tileX: 48.2, tileY: 31.4, scale: 0.86, layer: 'building' }
   );
   // 六下江南挑戰牌坊加立體飛簷頂蓋，消除平頂方柱感
   deco[28][36] = TileIndex.TOUR_ARCHWAY_L;

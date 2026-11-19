@@ -34,6 +34,9 @@ const VOYAGES: VoyageStop[] = [
 export class SouthernTourMinigame extends Phaser.Scene {
   private currentLane = 1;
   private boat!: Phaser.GameObjects.Image;
+  private boatDragging = false;
+  private boatDragOffX = 0;
+  private boatDragOffY = 0;
   private voyageIdx = 0;
   private treasurySilver = INITIAL_TREASURY;
   private hullHp = 4;
@@ -98,7 +101,7 @@ export class SouthernTourMinigame extends Phaser.Scene {
       this.bankProps.push(wTop, wBot);
     }
 
-    // 三條水路航道分隔線與觸控點擊切換區
+    // 三條水路航道分隔線（僅視覺參考；船隻可在運河內自由移動）
     const laneGraphics = this.add.graphics();
     laneGraphics.lineStyle(1.5, 0x7cd1e3, 0.45);
     for (let x = 12; x < STAGE_W; x += 28) {
@@ -106,15 +109,10 @@ export class SouthernTourMinigame extends Phaser.Scene {
       laneGraphics.lineBetween(x, 255, x + 14, 255);
     }
 
-    LANE_Y.forEach((ly, idx) => {
-      const zone = this.add
-        .rectangle(STAGE_W / 2, ly, STAGE_W + 200, 78, 0xffffff, 0.001)
-        .setDepth(15)
-        .setInteractive({ useHandCursor: true, pixelPerfect: false });
-      zone.on('pointerdown', () => {
-        if (!this.ended) this.setBoatLane(idx);
-      });
-    });
+    // Large invisible water pad for grab-anywhere boat control (iPad-friendly)
+    const waterPad = this.add
+      .rectangle(STAGE_W / 2, 222, STAGE_W + 40, 220, 0xffffff, 0.001)
+      .setDepth(14);
 
     // 頂部雙列資訊牌匾與國庫存銀遞減條
     this.add
@@ -168,52 +166,64 @@ export class SouthernTourMinigame extends Phaser.Scene {
       .setOrigin(0, 0.5)
       .setDepth(32);
 
-    // 雕龍御船（縮放適配航道高度；可點按／拖曳換航道）
+    // 雕龍御船：觸控拖曳可在運河內上下左右移動；鍵盤亦可操控
     this.boat = this.add
       .image(102, LANE_Y[this.currentLane], 'royal_boat')
       .setScale(0.75)
       .setDepth(20);
-    this.boat.setInteractive(
-      new Phaser.Geom.Rectangle(-56, -36, 112, 72),
-      Phaser.Geom.Rectangle.Contains
-    );
-    this.boat.input!.cursor = 'pointer';
-    this.input.setDraggable(this.boat);
-    this.boat.on('pointerdown', () => {
-      // keep focus; lane change via drag or lane zones
-    });
-    this.boat.on(
-      'drag',
-      (_pointer: Phaser.Input.Pointer, _dragX: number, dragY: number) => {
-        if (this.ended) return;
-        // Keep X fixed; snap vertically to nearest lane (no per-frame tweens)
-        let best = this.currentLane;
-        let bestDist = Number.POSITIVE_INFINITY;
-        for (let i = 0; i < LANE_Y.length; i++) {
-          const d = Math.abs(dragY - LANE_Y[i]);
-          if (d < bestDist) {
-            bestDist = d;
-            best = i;
-          }
+
+    const pointerWorld = (p: Phaser.Input.Pointer) => {
+      const cam = this.cameras.main;
+      return cam.getWorldPoint(p.x, p.y);
+    };
+    const clampBoat = (x: number, y: number) => {
+      const nx = Phaser.Math.Clamp(x, 56, STAGE_W - 72);
+      const ny = Phaser.Math.Clamp(y, 138, 318);
+      this.boat.setPosition(nx, ny);
+      // Keep lane index for HUD / legacy; collision uses free Y
+      let best = 0;
+      let bestDist = Number.POSITIVE_INFINITY;
+      for (let i = 0; i < LANE_Y.length; i++) {
+        const d = Math.abs(ny - LANE_Y[i]);
+        if (d < bestDist) {
+          bestDist = d;
+          best = i;
         }
-        this.currentLane = best;
-        this.boat.setPosition(102, LANE_Y[best]);
       }
-    );
-    this.boat.on('dragend', () => {
+      this.currentLane = best;
+    };
+    const beginBoatDrag = (p: Phaser.Input.Pointer) => {
       if (this.ended) return;
-      this.boat.x = 102;
-      this.setBoatLane(this.currentLane);
+      const w = pointerWorld(p);
+      // Accept grab near boat OR anywhere on water pad (no tiny hit box)
+      const nearBoat =
+        Math.abs(w.x - this.boat.x) < 90 && Math.abs(w.y - this.boat.y) < 70;
+      const onWater =
+        w.y >= 130 && w.y <= 330 && w.x >= 20 && w.x <= STAGE_W - 20;
+      if (!nearBoat && !onWater) return;
+      this.boatDragging = true;
+      this.boatDragOffX = this.boat.x - w.x;
+      this.boatDragOffY = this.boat.y - w.y;
+      if (nearBoat || onWater) {
+        clampBoat(w.x + this.boatDragOffX, w.y + this.boatDragOffY);
+      }
+    };
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => beginBoatDrag(p));
+    this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
+      if (!this.boatDragging || this.ended) return;
+      const w = pointerWorld(p);
+      clampBoat(w.x + this.boatDragOffX, w.y + this.boatDragOffY);
     });
+    const endDrag = () => {
+      this.boatDragging = false;
+    };
+    this.input.on('pointerup', endDrag);
+    this.input.on('pointerupoutside', endDrag);
+    // Keep pad reference so it is not GC-optimized away from scene graph
+    waterPad.setVisible(true);
 
     if (this.input.keyboard) {
       this.cursors = this.input.keyboard.createCursorKeys();
-      this.cursors.up.on('down', () => {
-        if (!this.ended) this.setBoatLane(Math.max(0, this.currentLane - 1));
-      });
-      this.cursors.down.on('down', () => {
-        if (!this.ended) this.setBoatLane(Math.min(2, this.currentLane + 1));
-      });
     }
 
     this.applyVoyageTransition(0);
@@ -235,7 +245,7 @@ export class SouthernTourMinigame extends Phaser.Scene {
     ui.renderMinigamePanel({
       title: '六次乘船下江南挑戰（乾隆朝）',
       instruction:
-        '點按上、中、下三條水道（或按上下鍵）避開暗礁，完成六次遊江南航程，並觀察上方國庫存銀遞減！',
+        '用手指拖動御船（或按方向鍵）在運河內上下左右移動，避開暗礁，完成六次遊江南航程，並觀察上方國庫存銀遞減！',
       onRetry: () => this.scene.restart(),
       onLeave: () => this.scene.start('ExploreScene')
     });
@@ -254,6 +264,7 @@ export class SouthernTourMinigame extends Phaser.Scene {
     this.currentLane = lane;
     this.tweens.add({
       targets: this.boat,
+      x: Phaser.Math.Clamp(this.boat.x, 56, STAGE_W - 72),
       y: LANE_Y[lane],
       duration: 130,
       ease: 'Sine.easeOut'
@@ -384,6 +395,41 @@ export class SouthernTourMinigame extends Phaser.Scene {
     const dt = delta / 1000;
     const scrollSpeed = 152;
 
+    // Keyboard free movement inside the canal
+    if (!this.boatDragging && this.cursors) {
+      let kx = 0;
+      let ky = 0;
+      if (this.cursors.left?.isDown) kx -= 1;
+      if (this.cursors.right?.isDown) kx += 1;
+      if (this.cursors.up?.isDown) ky -= 1;
+      if (this.cursors.down?.isDown) ky += 1;
+      if (kx !== 0 || ky !== 0) {
+        const speed = 170 * dt;
+        const mag = Math.hypot(kx, ky) || 1;
+        const nx = Phaser.Math.Clamp(
+          this.boat.x + (kx / mag) * speed,
+          56,
+          STAGE_W - 72
+        );
+        const ny = Phaser.Math.Clamp(
+          this.boat.y + (ky / mag) * speed,
+          138,
+          318
+        );
+        this.boat.setPosition(nx, ny);
+        let best = 0;
+        let bestDist = Number.POSITIVE_INFINITY;
+        for (let i = 0; i < LANE_Y.length; i++) {
+          const d = Math.abs(ny - LANE_Y[i]);
+          if (d < bestDist) {
+            bestDist = d;
+            best = i;
+          }
+        }
+        this.currentLane = best;
+      }
+    }
+
     for (const prop of this.bankProps) {
       prop.x -= scrollSpeed * 0.65 * dt;
       if (prop.x < -36) {
@@ -406,8 +452,8 @@ export class SouthernTourMinigame extends Phaser.Scene {
       obs.sprite.x -= scrollSpeed * dt;
       if (
         !obs.handled &&
-        obs.laneIdx === this.currentLane &&
-        Math.abs(obs.sprite.x - this.boat.x) < 42
+        Math.abs(obs.sprite.y - this.boat.y) < 40 &&
+        Math.abs(obs.sprite.x - this.boat.x) < 48
       ) {
         obs.handled = true;
         if (obs.kind === 'rock') {

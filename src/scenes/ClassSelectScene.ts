@@ -79,7 +79,10 @@ export class ClassSelectScene extends Phaser.Scene {
       }
     ];
 
+    let picking = false;
     const pickStage = (stageId: StageId) => {
+      if (picking) return;
+      picking = true;
       gameState.selectClassStage(stageId);
       this.scene.start('OpeningScene', {
         stageName: STAGE_NAMES[stageId]
@@ -88,6 +91,9 @@ export class ClassSelectScene extends Phaser.Scene {
 
     // iPad: allow taps on overlapping card / doll hit pads
     this.input.setTopOnly(false);
+
+    const cardHitBoxes: { id: StageId; cx: number; cy: number; w: number; h: number }[] =
+      [];
 
     cards.forEach((c, idx) => {
       const cx = 112 + idx * 176;
@@ -107,7 +113,7 @@ export class ClassSelectScene extends Phaser.Scene {
         .setDepth(5);
       emp.play(`${c.sprite}_down`);
       emp.setInteractive(
-        new Phaser.Geom.Rectangle(-28, -40, 56, 72),
+        new Phaser.Geom.Rectangle(-40, -52, 80, 96),
         Phaser.Geom.Rectangle.Contains
       );
       emp.input!.cursor = 'pointer';
@@ -119,6 +125,8 @@ export class ClassSelectScene extends Phaser.Scene {
         .setDepth(6)
         .setInteractive({ useHandCursor: true });
       pad.on('pointerdown', () => pickStage(c.id));
+
+      cardHitBoxes.push({ id: c.id, cx, cy, w: 178, h: 240 });
 
       this.add
         .text(cx, cy + 36, STAGE_NAMES[c.id], {
@@ -149,6 +157,20 @@ export class ClassSelectScene extends Phaser.Scene {
           })
           .setOrigin(0.5)
           .setDepth(7);
+      }
+    });
+
+    // Robust iPad path: ignore Phaser hit-area quirks; map pointer via camera
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      const w = this.cameras.main.getWorldPoint(p.x, p.y);
+      for (const box of cardHitBoxes) {
+        if (
+          Math.abs(w.x - box.cx) <= box.w / 2 &&
+          Math.abs(w.y - box.cy) <= box.h / 2
+        ) {
+          pickStage(box.id);
+          return;
+        }
       }
     });
 

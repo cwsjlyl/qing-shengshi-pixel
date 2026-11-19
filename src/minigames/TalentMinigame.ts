@@ -80,6 +80,9 @@ export class TalentMinigame extends Phaser.Scene {
   private cardContainers: Map<string, Phaser.GameObjects.Container> = new Map();
   private cardBasePos: Map<string, { x: number; y: number }> = new Map();
   private finished = false;
+  private draggingId: string | null = null;
+  private dragOffX = 0;
+  private dragOffY = 0;
 
   constructor() {
     super('TalentMinigame');
@@ -176,6 +179,72 @@ export class TalentMinigame extends Phaser.Scene {
       this.createCandidateCard(cand, cx, cy);
     });
 
+    // Scene-level drag using camera world points (fixes Container hit-area / zoom bugs on iPad)
+    const pointerWorld = (p: Phaser.Input.Pointer) =>
+      this.cameras.main.getWorldPoint(p.x, p.y);
+    const hitCardId = (wx: number, wy: number): string | null => {
+      let best: string | null = null;
+      let bestDist = 58;
+      this.cardContainers.forEach((cont, id) => {
+        if (!cont.visible) return;
+        const d = Phaser.Math.Distance.Between(wx, wy, cont.x, cont.y);
+        // Entire visible card (~96x92) is grabbable
+        if (
+          Math.abs(wx - cont.x) <= 52 &&
+          Math.abs(wy - cont.y) <= 50 &&
+          d < bestDist
+        ) {
+          bestDist = d;
+          best = id;
+        }
+      });
+      return best;
+    };
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      if (this.finished) return;
+      const w = pointerWorld(p);
+      const id = hitCardId(w.x, w.y);
+      if (!id) return;
+      const cont = this.cardContainers.get(id);
+      if (!cont) return;
+      this.draggingId = id;
+      this.dragOffX = cont.x - w.x;
+      this.dragOffY = cont.y - w.y;
+      this.selectCandidate(id);
+      cont.setDepth(40);
+    });
+    this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
+      if (this.finished || !this.draggingId) return;
+      const cont = this.cardContainers.get(this.draggingId);
+      if (!cont) return;
+      const w = pointerWorld(p);
+      cont.setPosition(w.x + this.dragOffX, w.y + this.dragOffY);
+    });
+    const endCardDrag = () => {
+      if (!this.draggingId) return;
+      const id = this.draggingId;
+      this.draggingId = null;
+      const cont = this.cardContainers.get(id);
+      if (!cont || this.finished) return;
+      cont.setDepth(25);
+      let matchedSlot: PostSlotDef | null = null;
+      let minDist = 68;
+      for (const slot of POST_SLOTS) {
+        const d = Phaser.Math.Distance.Between(cont.x, cont.y, slot.x, slot.y);
+        if (d < minDist) {
+          minDist = d;
+          matchedSlot = slot;
+        }
+      }
+      if (matchedSlot) {
+        this.assignCandidateToSlot(id, matchedSlot.id);
+      } else {
+        this.returnCardToTray(id);
+      }
+    };
+    this.input.on('pointerup', endCardDrag);
+    this.input.on('pointerupoutside', endCardDrag);
+
     const submitBtn = this.add
       .rectangle(478, 314, 86, 100, 0xd19924, 1)
       .setStrokeStyle(2, 0xfff0b3)
@@ -254,60 +323,19 @@ export class TalentMinigame extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    container.add([bg, ethBadge, ethText, spr, specText]);
-    container.setSize(110, 108);
+    // Full-card invisible pad (visual children are centered at 0,0)
+    const pad = this.add.rectangle(0, 0, 110, 108, 0xffffff, 0.001);
+    container.add([bg, ethBadge, ethText, spr, specText, pad]);
+    // Do NOT call setSize() — it recenters displayOrigin so a centered
+    // hit rect only covers the top-left of the visual card on iPad.
+    // Scene-level getWorldPoint drag (above) is the primary input path.
     container.setInteractive(
       new Phaser.Geom.Rectangle(-55, -54, 110, 108),
       Phaser.Geom.Rectangle.Contains
     );
     if (container.input) {
       container.input.cursor = 'pointer';
-      container.input.draggable = true;
     }
-    this.input.setDraggable(container);
-
-    container.on('pointerdown', () => {
-      if (this.finished) return;
-      this.selectCandidate(cand.id);
-    });
-
-    container.on('dragstart', () => {
-      if (this.finished) return;
-      this.selectCandidate(cand.id);
-      container.setDepth(40);
-    });
-
-    container.on(
-      'drag',
-      (_pointer: Phaser.Input.Pointer, dragX: number, dragY: number) => {
-        if (this.finished) return;
-        container.setPosition(dragX, dragY);
-      }
-    );
-
-    container.on('dragend', () => {
-      if (this.finished) return;
-      container.setDepth(25);
-      let matchedSlot: PostSlotDef | null = null;
-      let minDist = 68;
-      for (const slot of POST_SLOTS) {
-        const d = Phaser.Math.Distance.Between(
-          container.x,
-          container.y,
-          slot.x,
-          slot.y
-        );
-        if (d < minDist) {
-          minDist = d;
-          matchedSlot = slot;
-        }
-      }
-      if (matchedSlot) {
-        this.assignCandidateToSlot(cand.id, matchedSlot.id);
-      } else {
-        this.returnCardToTray(cand.id);
-      }
-    });
 
     this.cardContainers.set(cand.id, container);
   }

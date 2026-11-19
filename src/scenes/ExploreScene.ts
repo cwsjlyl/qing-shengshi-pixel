@@ -21,6 +21,8 @@ export class ExploreScene extends Phaser.Scene {
   private mapData!: StageMapData;
   private player!: Phaser.GameObjects.Sprite;
   private playerDir: 'down' | 'left' | 'right' | 'up' = 'up';
+  /** Sticky axis for joystick chatter around 0 so facing does not flicker. */
+  private facingAxis: 'x' | 'y' = 'y';
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd?: {
     W: Phaser.Input.Keyboard.Key;
@@ -118,18 +120,20 @@ export class ExploreScene extends Phaser.Scene {
     this.royalBoatSprite = null;
     this.royalBoatIdleTween = null;
     if (this.mapData.boatPosition) {
+      const boatPx = Math.round(this.mapData.boatPosition.tileX * TILE_SIZE);
+      const boatPy = Math.round(this.mapData.boatPosition.tileY * TILE_SIZE);
       this.royalBoatSprite = this.add
-        .image(
-          Math.round(this.mapData.boatPosition.tileX * TILE_SIZE),
-          Math.round(this.mapData.boatPosition.tileY * TILE_SIZE),
-          'royal_boat'
-        )
-        .setDepth(8.5);
+        .image(boatPx, boatPy, 'royal_boat')
+        .setScale(1.42)
+        .setDepth(8.6);
       this.royalBoatSprite.setInteractive(
-        new Phaser.Geom.Rectangle(-48, -36, 96, 72),
+        new Phaser.Geom.Rectangle(-70, -48, 140, 96),
         Phaser.Geom.Rectangle.Contains
       );
       this.royalBoatSprite.input!.cursor = 'pointer';
+
+      // Six additional pier/escort boats are placed via stageMaps props.
+      // Main royal boat stays the large interactive boarding vessel.
 
       this.royalBoatSprite.on('pointerdown', () => {
         const ui = this.registry.get('ui') as HudUI;
@@ -633,14 +637,27 @@ export class ExploreScene extends Phaser.Scene {
       this.tryMovePlayer(dx, 0);
       this.tryMovePlayer(0, dy);
 
-      if (Math.abs(vx) >= Math.abs(vy)) {
-        this.playerDir = vx < 0 ? 'left' : 'right';
+      // Facing hysteresis: prefer current axis until the other clearly dominates
+      const ax = Math.abs(vx);
+      const ay = Math.abs(vy);
+      if (this.facingAxis === 'x') {
+        if (ay > ax * 1.35) this.facingAxis = 'y';
       } else {
-        this.playerDir = vy < 0 ? 'up' : 'down';
+        if (ax > ay * 1.35) this.facingAxis = 'x';
       }
+      if (this.facingAxis === 'x' && ax > 0.08) {
+        this.playerDir = vx < 0 ? 'left' : 'right';
+      } else if (ay > 0.08) {
+        this.playerDir = vy < 0 ? 'up' : 'down';
+      } else if (ax > 0.08) {
+        this.playerDir = vx < 0 ? 'left' : 'right';
+      }
+      // Sheet already has left/right rows — never flipX at runtime
+      this.player.setFlipX(false);
       this.player.play(`char_student_${this.playerDir}`, true);
     } else {
       this.player.anims.stop();
+      this.player.setFlipX(false);
       this.player.setFrame(CHAR_IDLE_FRAME[this.playerDir]);
     }
 
