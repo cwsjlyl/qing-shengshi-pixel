@@ -7,7 +7,8 @@ export const RAW_PNG_KEYS = {
   PALACE: 'raw_png_palace',
   JIANGNAN: 'raw_png_jiangnan',
   CAMP_PIER: 'raw_png_camp_pier',
-  CHARACTERS: 'raw_png_characters'
+  CHARACTERS: 'raw_png_characters',
+  SCHOOLBOY: 'raw_png_schoolboy'
 } as const;
 /**
  * 立體建築、下半部獨立分簇樹冠、自然邊緣過渡、軍營與船隻物件圖集鍵值
@@ -189,6 +190,7 @@ export class OriginalArtLoader {
     scene.load.image(RAW_PNG_KEYS.JIANGNAN, 'assets/tilesets/tileset-jiangnan.png');
     scene.load.image(RAW_PNG_KEYS.CAMP_PIER, 'assets/tilesets/tileset-camp-pier.png');
     scene.load.image(RAW_PNG_KEYS.CHARACTERS, 'assets/sprites/sprites-characters.png');
+    scene.load.image(RAW_PNG_KEYS.SCHOOLBOY, 'assets/sprites/char-student-schoolboy.png');
     scene.load.on('loaderror', (file: Phaser.Loader.File) => {
       console.warn(
         `[OriginalArtLoader] 載入失敗：public/${file.url}，請確認 PNG 已放置於指定路徑。`
@@ -2376,6 +2378,9 @@ export class OriginalArtLoader {
       rowFramesCache.set(r, this.sliceCharacterRowFrames(charImg, r, rowLabelCutoffRatio[r]));
     }
     for (const spec of CHARACTER_SPECS) {
+      if (spec.key === 'char_student' && this.registerReadySchoolboySheet(scene)) {
+        continue;
+      }
       const extracted = rowFramesCache.get(spec.row);
       if (extracted && extracted.length > 0) {
         this.registerCharacterSpritesheetAndAnims(scene, spec, extracted);
@@ -2525,7 +2530,41 @@ export class OriginalArtLoader {
     ctx.putImageData(imgData, 0, 0);
     return out;
   }
+  private static registerReadySchoolboySheet(scene: Phaser.Scene): boolean {
+    if (!scene.textures.exists(RAW_PNG_KEYS.SCHOOLBOY)) return false;
+    const srcTex = scene.textures.get(RAW_PNG_KEYS.SCHOOLBOY);
+    srcTex.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    const img = srcTex.getSourceImage();
+    if (!(img instanceof HTMLImageElement) && !(img instanceof HTMLCanvasElement)) {
+      return false;
+    }
+    const key = 'char_student';
+    if (scene.textures.exists(key)) scene.textures.remove(key);
+    const charSpriteTex = scene.textures.addSpriteSheet(key, img as HTMLImageElement, {
+      frameWidth: CHAR_FRAME_W,
+      frameHeight: CHAR_FRAME_H
+    });
+    if (!charSpriteTex) return false;
+    charSpriteTex.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    (['down', 'left', 'right', 'up'] as const).forEach((dName, rowIdx) => {
+      const animKey = `${key}_${dName}`;
+      if (scene.anims.exists(animKey)) scene.anims.remove(animKey);
+      scene.anims.create({
+        key: animKey,
+        frames: [
+          { key, frame: rowIdx * 4 + 0 },
+          { key, frame: rowIdx * 4 + 1 },
+          { key, frame: rowIdx * 4 + 2 },
+          { key, frame: rowIdx * 4 + 3 }
+        ],
+        frameRate: 8,
+        repeat: -1
+      });
+    });
+    return true;
+  }
   private static registerCharacterSpritesheetAndAnims(
+
     scene: Phaser.Scene,
     spec: CharacterSheetSpec,
     frames11: HTMLCanvasElement[]

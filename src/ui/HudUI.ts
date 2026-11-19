@@ -32,6 +32,8 @@ export class HudUI {
   private mainLayer: HTMLElement;
   private topRightLayer: HTMLElement;
   private settingsLayer: HTMLElement;
+  private minimapHost: HTMLElement;
+  private minimapCanvas: HTMLCanvasElement | null = null;
 
   public dirState: DirectionInputState = {
     up: false,
@@ -56,6 +58,7 @@ export class HudUI {
     this.root = el;
     this.root.innerHTML = `
       <div id="hud-main-layer"></div>
+      <div id="hud-minimap-host" aria-hidden="true"></div>
       <div id="hud-top-right">
         <button id="btn-hud-settings" class="settings-fab" type="button" aria-label="設定">
           <span>⚙</span><span>設定</span>
@@ -65,6 +68,7 @@ export class HudUI {
     `;
 
     this.mainLayer = this.root.querySelector('#hud-main-layer')!;
+    this.minimapHost = this.root.querySelector('#hud-minimap-host')!;
     this.topRightLayer = this.root.querySelector('#hud-top-right')!;
     this.settingsLayer = this.root.querySelector('#hud-settings-layer')!;
 
@@ -180,6 +184,120 @@ export class HudUI {
     this.isPanelModalOpen = false;
     this.resetInputState();
     this.mainLayer.innerHTML = '';
+    this.hideMinimap();
+  }
+
+  /** Hide exploration minimap (title / opening / class-select / minigames / ending). */
+  public hideMinimap(): void {
+    this.minimapHost.innerHTML = '';
+    this.minimapCanvas = null;
+    this.root.classList.remove('explore-with-minimap');
+  }
+
+  /**
+   * Draw / refresh the semi-transparent top-left exploration minimap.
+   * Buildings = solid tiles; investigate = npc/clue/minigame; exit = exit kind only.
+   */
+  public updateExploreMinimap(opts: {
+    cols: number;
+    rows: number;
+    solid: boolean[][];
+    triggers: Array<{
+      id: string;
+      kind: string;
+      tileX: number;
+      tileY: number;
+    }>;
+    playerTileX: number;
+    playerTileY: number;
+    viewTiles?: { x1: number; y1: number; x2: number; y2: number };
+  }): void {
+    if (!this.minimapCanvas) {
+      this.minimapHost.innerHTML = `<div class="explore-minimap"><canvas width="272" height="208"></canvas></div>`;
+      this.minimapCanvas = this.minimapHost.querySelector('canvas');
+      this.root.classList.add('explore-with-minimap');
+    }
+    const canvas = this.minimapCanvas;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const { cols, rows, solid, triggers, playerTileX, playerTileY, viewTiles } =
+      opts;
+    const cw = canvas.width;
+    const ch = canvas.height;
+    const pad = 6;
+    const mapW = cw - pad * 2;
+    const mapH = ch - pad * 2;
+    const cellW = mapW / cols;
+    const cellH = mapH / rows;
+
+    ctx.clearRect(0, 0, cw, ch);
+    ctx.fillStyle = 'rgba(22, 14, 10, 0.42)';
+    ctx.fillRect(0, 0, cw, ch);
+
+    // Ground wash
+    ctx.fillStyle = 'rgba(70, 52, 38, 0.55)';
+    ctx.fillRect(pad, pad, mapW, mapH);
+
+    // Building masses from solid grid
+    ctx.fillStyle = 'rgba(156, 40, 32, 0.78)';
+    for (let y = 0; y < rows; y++) {
+      const row = solid[y];
+      if (!row) continue;
+      for (let x = 0; x < cols; x++) {
+        if (!row[x]) continue;
+        ctx.fillRect(
+          pad + x * cellW,
+          pad + y * cellH,
+          Math.max(1, cellW),
+          Math.max(1, cellH)
+        );
+      }
+    }
+
+    const drawMarker = (
+      tx: number,
+      ty: number,
+      color: string,
+      radius: number
+    ) => {
+      const cx = pad + (tx + 0.5) * cellW;
+      const cy = pad + (ty + 0.5) * cellH;
+      ctx.beginPath();
+      ctx.fillStyle = color;
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255, 248, 220, 0.85)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    };
+
+    for (const t of triggers) {
+      if (t.kind === 'exit') {
+        // Exit (yongzheng_exit / qianlong_exit) — not south_moongate_note
+        drawMarker(t.tileX, t.tileY, 'rgba(255, 214, 74, 0.95)', 4.2);
+      } else if (
+        t.kind === 'npc' ||
+        t.kind === 'clue' ||
+        t.kind === 'minigame'
+      ) {
+        drawMarker(t.tileX, t.tileY, 'rgba(110, 230, 168, 0.95)', 3.4);
+      }
+    }
+
+    if (viewTiles) {
+      const vx = pad + viewTiles.x1 * cellW;
+      const vy = pad + viewTiles.y1 * cellH;
+      const vw = Math.max(cellW, (viewTiles.x2 - viewTiles.x1) * cellW);
+      const vh = Math.max(cellH, (viewTiles.y2 - viewTiles.y1) * cellH);
+      ctx.strokeStyle = 'rgba(255, 248, 220, 0.55)';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(vx, vy, vw, vh);
+    }
+
+    // Player
+    drawMarker(playerTileX, playerTileY, 'rgba(90, 180, 255, 1)', 4.6);
   }
 
   // 1. 標題畫面疊加啟動卡
@@ -192,14 +310,16 @@ export class HudUI {
     this.isPanelModalOpen = false;
     this.resetInputState();
 
+    this.hideMinimap();
     this.mainLayer.innerHTML = `
+      <img class="title-school-logo" src="./assets/ui/school-logo-cst.png" alt="CST school logo" />
       <div class="title-dock">
         <div class="btn-stack">
           <button id="btn-seq" class="pixel-btn gold" type="button">${MODE_SEQUENTIAL_LABEL}</button>
           <button id="btn-class" class="pixel-btn" type="button">${MODE_CLASS_LABEL}</button>
         </div>
         <div style="font-size:12px;color:#dfd4c3;text-align:center;line-height:1.4;">
-          點選上方模式進入清朝盛世探索（右上角「設定」可查閱操作說明）
+          點選上方模式進入清朝盛世探索；亦可點按殿前皇帝公仔直接進入該朝（右上角「設定」可查閱操作說明）
         </div>
       </div>
     `;
@@ -215,6 +335,7 @@ export class HudUI {
   // 2. 開場畫面疊加任務面板
   public renderOpeningScreen(stageName: string, onConfirm: () => void): void {
     this.clearActiveKeyListener();
+    this.hideMinimap();
     this.closeSettingsModal();
     this.isPanelModalOpen = true;
     this.resetInputState();
@@ -249,6 +370,7 @@ export class HudUI {
     onBackTitle: () => void
   ): void {
     this.clearActiveKeyListener();
+    this.hideMinimap();
     this.closeSettingsModal();
     this.isPanelModalOpen = false;
     this.resetInputState();
@@ -842,6 +964,7 @@ export class HudUI {
     onLeave: () => void;
   }): void {
     this.clearActiveKeyListener();
+    this.hideMinimap();
     this.isPanelModalOpen = true;
     this.resetInputState();
 
@@ -877,6 +1000,7 @@ export class HudUI {
     onBackClassSelect: () => void
   ): void {
     this.clearActiveKeyListener();
+    this.hideMinimap();
     this.isPanelModalOpen = true;
     this.resetInputState();
 

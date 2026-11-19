@@ -4,7 +4,7 @@ import {
   HD_PROPS_ATLAS_KEY,
   PropStampFrame
 } from '../art/OriginalArtLoader';
-import { STAGE_NAMES, TITLE } from '../data/content';
+import { STAGE_NAMES, TITLE, StageId } from '../data/content';
 import { CHAR_IDLE_FRAME, TILE_SIZE, TileIndex } from '../gfx/PixelArtGenerator';
 import { gameState } from '../state/gameState';
 import { HudUI } from '../ui/HudUI';
@@ -242,24 +242,50 @@ export class TitleScene extends Phaser.Scene {
       }
     }
 
-    // 5. 殿前漢白玉御道上的康、雍、乾三朝皇帝（1:1 整數像素，配合攝影機整數倍縮放）
+    // 5. 殿前漢白玉御道上的康、雍、乾三朝皇帝（可點按進入該朝課堂模式）
     const emperorY = 254;
-    const kx = this.add
-      .sprite(SCENE_W / 2 - 54, emperorY, 'char_kangxi_emperor', CHAR_IDLE_FRAME.down)
-      .setOrigin(0.5, 0.92)
-      .setDepth(16);
-    const yz = this.add
-      .sprite(SCENE_W / 2, emperorY, 'char_yongzheng_emperor', CHAR_IDLE_FRAME.down)
-      .setOrigin(0.5, 0.92)
-      .setDepth(16);
-    const ql = this.add
-      .sprite(SCENE_W / 2 + 54, emperorY, 'char_qianlong_emperor', CHAR_IDLE_FRAME.down)
-      .setOrigin(0.5, 0.92)
-      .setDepth(16);
+    const emperors: Array<{
+      id: StageId;
+      key: string;
+      x: number;
+    }> = [
+      { id: 'kangxi', key: 'char_kangxi_emperor', x: SCENE_W / 2 - 54 },
+      { id: 'yongzheng', key: 'char_yongzheng_emperor', x: SCENE_W / 2 },
+      { id: 'qianlong', key: 'char_qianlong_emperor', x: SCENE_W / 2 + 54 }
+    ];
 
-    kx.play('char_kangxi_emperor_down');
-    yz.play('char_yongzheng_emperor_down');
-    ql.play('char_qianlong_emperor_down');
+    const enterClassroomStage = (stageId: StageId) => {
+      gameState.selectClassStage(stageId);
+      this.scene.start('OpeningScene', {
+        stageName: STAGE_NAMES[stageId]
+      });
+    };
+
+    // Allow taps through overlapping sprites / hit pads on iPad
+    this.input.setTopOnly(false);
+
+    for (const emp of emperors) {
+      const spr = this.add
+        .sprite(emp.x, emperorY, emp.key, CHAR_IDLE_FRAME.down)
+        .setOrigin(0.5, 0.92)
+        .setDepth(16);
+      spr.play(`${emp.key}_down`);
+
+      // Generous rectangular hit area (not pixel-perfect) for iPad taps
+      spr.setInteractive(
+        new Phaser.Geom.Rectangle(-36, -78, 72, 90),
+        Phaser.Geom.Rectangle.Contains
+      );
+      spr.input!.cursor = 'pointer';
+      spr.on('pointerdown', () => enterClassroomStage(emp.id));
+
+      // Extra invisible pad covering the doll + label space
+      const pad = this.add
+        .rectangle(emp.x, emperorY - 28, 78, 100, 0xffffff, 0.001)
+        .setDepth(17)
+        .setInteractive({ useHandCursor: true });
+      pad.on('pointerdown', () => enterClassroomStage(emp.id));
+    }
 
     // 6. 頂部描金宮匾標題（寬 348px、高 54px，確保直向窄螢幕與橫向低螢幕皆不溢出）
     const plaqueW = 348;

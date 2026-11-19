@@ -93,6 +93,7 @@ export class TalentMinigame extends Phaser.Scene {
     this.cardBasePos.clear();
 
     this.cameras.main.setBackgroundColor('#261812');
+    this.input.setTopOnly(false);
     this.fitViewport(this.scale.width, this.scale.height);
 
     const onResize = (gameSize: Phaser.Structs.Size) => {
@@ -136,9 +137,9 @@ export class TalentMinigame extends Phaser.Scene {
       const fill = slot.isRejectZone ? 0x4a2420 : 0x3b2a1c;
       const stroke = slot.isRejectZone ? 0xd96b5c : 0xe8ba4b;
       const box = this.add
-        .rectangle(slot.x, slot.y, 144, 74, fill, 0.95)
+        .rectangle(slot.x, slot.y, 156, 86, fill, 0.95)
         .setStrokeStyle(2, stroke)
-        .setInteractive({ useHandCursor: true });
+        .setInteractive({ useHandCursor: true, pixelPerfect: false });
 
       this.add
         .text(slot.x, slot.y - 20, slot.title, {
@@ -176,9 +177,9 @@ export class TalentMinigame extends Phaser.Scene {
     });
 
     const submitBtn = this.add
-      .rectangle(478, 314, 76, 92, 0xd19924, 1)
+      .rectangle(478, 314, 86, 100, 0xd19924, 1)
       .setStrokeStyle(2, 0xfff0b3)
-      .setInteractive({ useHandCursor: true });
+      .setInteractive({ useHandCursor: true, pixelPerfect: false });
 
     this.add
       .text(478, 314, '呈交\n任用\n名單', {
@@ -254,8 +255,15 @@ export class TalentMinigame extends Phaser.Scene {
       .setOrigin(0.5);
 
     container.add([bg, ethBadge, ethText, spr, specText]);
-    container.setSize(96, 92);
-    container.setInteractive({ draggable: true, useHandCursor: true });
+    container.setSize(110, 108);
+    container.setInteractive(
+      new Phaser.Geom.Rectangle(-55, -54, 110, 108),
+      Phaser.Geom.Rectangle.Contains
+    );
+    if (container.input) {
+      container.input.cursor = 'pointer';
+      container.input.draggable = true;
+    }
     this.input.setDraggable(container);
 
     container.on('pointerdown', () => {
