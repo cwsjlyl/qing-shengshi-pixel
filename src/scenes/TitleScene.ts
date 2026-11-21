@@ -13,10 +13,6 @@ import { stopOtherScenes } from './exclusiveScene';
 
 const SCENE_W = 576;
 
-/**
- * 標題畫面核心構圖安全範圍（由頂部描金宮匾 y=8 至殿前三位皇帝名牌 y=274）：
- * 寬 356px、高 266px，確保在手機橫向、直向、iPad 與電腦螢幕完整呈現於下方選單之上。
- */
 const FOCAL_W = 356;
 const FOCAL_TOP_Y = 8;
 const FOCAL_BOTTOM_Y = 274;
@@ -66,7 +62,7 @@ export class TitleScene extends Phaser.Scene {
     stopOtherScenes(this);
     this.cameras.main.setBackgroundColor('#244f73');
 
-    // 1. 晴空漸層色帶（向上與左右大幅延伸，適配超寬橫向與修長直向螢幕）
+    // 1. 晴空漸層色帶
     const sky = this.add.graphics().setDepth(0);
     sky.fillStyle(0x234e75, 1);
     sky.fillRect(-960, -720, SCENE_W + 1920, 780);
@@ -93,7 +89,7 @@ export class TitleScene extends Phaser.Scene {
       this.clouds.push(c);
     }
 
-    // 2. 廣闊宮苑地面：6 種原創灰磚變體、4 種漢白玉變體與兩側御苑草地
+    // 2. 廣闊宮苑地面
     for (let r = 8; r <= 33; r++) {
       const py = r * TILE_SIZE + TILE_SIZE / 2;
       for (let c = -18; c <= 41; c++) {
@@ -233,7 +229,9 @@ export class TitleScene extends Phaser.Scene {
       }
     }
 
-    // 5. 殿前漢白玉御道上的康、雍、乾三朝皇帝（4x 高清輪廓精靈 + 清晰帝號名牌）
+    const ui = this.registry.get('ui') as HudUI;
+
+    // 5. 殿前漢白玉御道上的康、雍、乾三朝皇帝（點按以「課堂分關」模式進入該朝）
     const emperorY = 250;
     const emperors: Array<{
       id: StageId;
@@ -247,6 +245,7 @@ export class TitleScene extends Phaser.Scene {
     ];
 
     const enterClassroomStage = (stageId: StageId) => {
+      if (!this.sys.isActive() || ui.isModalOpen) return;
       gameState.selectClassStage(stageId);
       this.scene.start('OpeningScene', {
         stageName: STAGE_NAMES[stageId]
@@ -266,7 +265,6 @@ export class TitleScene extends Phaser.Scene {
         .setDepth(16);
       spr.play(`${emp.key}_down`);
 
-      // 腳下描金帝號名牌，讓學生一眼辨識康、雍、乾三帝
       this.add
         .text(emp.x, emperorY + 5, emp.shortName, {
           fontSize: '11px',
@@ -290,19 +288,13 @@ export class TitleScene extends Phaser.Scene {
         Phaser.Geom.Rectangle.Contains
       );
       spr.input!.cursor = 'pointer';
-      spr.on('pointerdown', () => {
-        if (!this.sys.isActive()) return;
-        enterClassroomStage(emp.id);
-      });
+      spr.on('pointerdown', () => enterClassroomStage(emp.id));
 
       const pad = this.add
         .rectangle(emp.x, emperorY - 22, 82, 106, 0xffffff, 0.001)
         .setDepth(17)
         .setInteractive({ useHandCursor: true });
-      pad.on('pointerdown', () => {
-        if (!this.sys.isActive()) return;
-        enterClassroomStage(emp.id);
-      });
+      pad.on('pointerdown', () => enterClassroomStage(emp.id));
     }
 
     // 6. 頂部描金宮匾標題
@@ -341,30 +333,10 @@ export class TitleScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(26);
 
-    // 7. 呼叫現有 HudUI 渲染標題選單
-    const ui = this.registry.get('ui') as HudUI;
-    ui.setNavigationHandlers({});
-    ui.renderTitleScreen(
-      () => {
-        gameState.startSequentialMode();
-        this.scene.start('OpeningScene', {
-          stageName: STAGE_NAMES.kangxi
-        });
-      },
-      () => {
-        gameState.enterClassSelectMode();
-        this.scene.start('ClassSelectScene');
-      }
-    );
+    // 7. 渲染標題選單（支援直接進入「向乾隆進諫」）
+    this.openTitleMenu();
 
     // 8. 依據裝置方向與選單實際高度動態對齊視窗
-    this.syncViewportAndTitleDock(this.scale.width, this.scale.height);
-    this.rafId = window.requestAnimationFrame(() => {
-      if (this.scene.isActive()) {
-        this.syncViewportAndTitleDock(this.scale.width, this.scale.height);
-      }
-    });
-
     const onResize = (gameSize: Phaser.Structs.Size) => {
       this.syncViewportAndTitleDock(gameSize.width, gameSize.height);
     };
@@ -377,8 +349,43 @@ export class TitleScene extends Phaser.Scene {
       }
       const main = document.getElementById('hud-main-layer');
       if (main?.querySelector('.title-dock')) {
-        const ui = this.registry.get('ui') as HudUI;
         ui.clearMainOverlay();
+      }
+    });
+  }
+
+  private openTitleMenu(): void {
+    const ui = this.registry.get('ui') as HudUI;
+    ui.setNavigationHandlers({});
+    ui.renderTitleScreen(
+      () => {
+        gameState.startSequentialMode();
+        this.scene.start('OpeningScene', {
+          stageName: STAGE_NAMES.kangxi
+        });
+      },
+      () => {
+        gameState.enterClassSelectMode();
+        this.scene.start('ClassSelectScene');
+      },
+      () => {
+        ui.setNavigationHandlers({
+          onGoTitle: () => this.openTitleMenu()
+        });
+        ui.showQianlongRemonstrancePanel({
+          entrySource: 'title',
+          onFinish: () => this.openTitleMenu()
+        });
+      }
+    );
+
+    this.syncViewportAndTitleDock(this.scale.width, this.scale.height);
+    if (this.rafId !== null) {
+      window.cancelAnimationFrame(this.rafId);
+    }
+    this.rafId = window.requestAnimationFrame(() => {
+      if (this.scene.isActive()) {
+        this.syncViewportAndTitleDock(this.scale.width, this.scale.height);
       }
     });
   }
@@ -391,17 +398,17 @@ export class TitleScene extends Phaser.Scene {
     );
     const btnStack = dock?.querySelector<HTMLElement>('.btn-stack');
     const buttons = dock?.querySelectorAll<HTMLButtonElement>('.pixel-btn');
-    const noteEl = dock?.lastElementChild as HTMLElement | null;
+    const noteEl = dock?.querySelector<HTMLElement>('.title-dock-note');
 
     const isCompactLandscape = viewW > viewH && viewH < 560;
-    const isMediumLandscape = viewW >= 560 && viewH >= 560 && viewH < 740;
+    const isWideLandscape = viewW > viewH && viewW >= 580;
 
     if (dock && btnStack) {
-      if (isCompactLandscape || isMediumLandscape) {
-        dock.style.padding = isCompactLandscape ? '6px 10px' : '9px 14px';
-        dock.style.bottom = isCompactLandscape ? '6px' : '12px';
-        dock.style.width = 'min(92vw, 520px)';
-        dock.style.gap = isCompactLandscape ? '4px' : '6px';
+      if (isCompactLandscape || isWideLandscape) {
+        dock.style.padding = isCompactLandscape ? '6px 10px' : '10px 14px';
+        dock.style.bottom = isCompactLandscape ? '6px' : '14px';
+        dock.style.width = 'min(94vw, 620px)';
+        dock.style.gap = isCompactLandscape ? '4px' : '7px';
 
         btnStack.style.display = 'flex';
         btnStack.style.flexDirection = 'row';
@@ -409,14 +416,13 @@ export class TitleScene extends Phaser.Scene {
 
         buttons?.forEach((btn) => {
           btn.style.flex = '1 1 0';
-          btn.style.padding = isCompactLandscape ? '7px 10px' : '9px 12px';
-          btn.style.fontSize = isCompactLandscape ? '13.5px' : '15px';
+          btn.style.padding = isCompactLandscape ? '7px 8px' : '10px 12px';
+          btn.style.fontSize = isCompactLandscape ? '13px' : '15px';
         });
 
-        if (noteEl && noteEl !== btnStack) {
+        if (noteEl) {
           noteEl.style.fontSize = isCompactLandscape ? '11.5px' : '12.5px';
-          noteEl.style.color = '#f5efe2';
-          noteEl.style.display = viewH < 350 ? 'none' : 'block';
+          noteEl.style.display = viewH < 360 ? 'none' : 'block';
         }
       } else {
         dock.style.cssText = '';
@@ -424,20 +430,15 @@ export class TitleScene extends Phaser.Scene {
         buttons?.forEach((btn) => {
           btn.style.cssText = '';
         });
-        if (noteEl && noteEl !== btnStack) {
+        if (noteEl) {
           noteEl.style.cssText = '';
-          noteEl.style.fontSize = '13px';
-          noteEl.style.color = '#f5efe2';
-          noteEl.style.fontWeight = '700';
-          noteEl.style.textAlign = 'center';
-          noteEl.style.lineHeight = '1.45';
         }
       }
     }
 
     const dockRect = dock?.getBoundingClientRect();
     const dockTop =
-      dockRect && dockRect.height > 0 ? dockRect.top : viewH - 110;
+      dockRect && dockRect.height > 0 ? dockRect.top : viewH - 120;
 
     const safeTop = 6;
     const safeBottom = Math.max(

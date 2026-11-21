@@ -24,7 +24,6 @@ export class ExploreScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Sprite;
   private playerAura!: Phaser.GameObjects.Ellipse;
   private playerDir: 'down' | 'left' | 'right' | 'up' = 'up';
-  /** Sticky axis for joystick chatter around 0 so facing does not flicker. */
   private facingAxis: 'x' | 'y' = 'y';
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasd?: {
@@ -207,7 +206,6 @@ export class ExploreScene extends Phaser.Scene {
         trig.kind === 'minigame' ||
         trig.kind === 'exit'
       ) {
-        // 腳下清晰繁體中文名牌，讓學生一眼看清歷史人物與挑戰點
         const isHighlight = trig.kind === 'minigame' || trig.kind === 'exit';
         this.add
           .text(tx, ty + 6, trig.label, {
@@ -247,7 +245,7 @@ export class ExploreScene extends Phaser.Scene {
 
     this.refreshBadges();
 
-    // 5. 玩家主角精靈（4x 高清精靈 + 腳下淡金定位光環，不再與背景混淆）
+    // 5. 玩家主角精靈
     const startTileX = progress.playerTileX ?? this.mapData.spawnX;
     const startTileY = progress.playerTileY ?? this.mapData.spawnY;
     const startPx = startTileX * TILE_SIZE + TILE_SIZE / 2;
@@ -299,7 +297,7 @@ export class ExploreScene extends Phaser.Scene {
       .setDepth(45)
       .setVisible(false);
 
-    // 8. Retina 整數倍像素縮放攝影機（iPad 自動採用 3x 視野，人物放大 50% 更清晰）
+    // 8. Retina 整數倍像素縮放攝影機
     const cam = this.cameras.main;
     cam.setBounds(0, 0, worldW, worldH);
     this.applyCameraIntegerZoom(this.scale.width, this.scale.height);
@@ -522,7 +520,6 @@ export class ExploreScene extends Phaser.Scene {
   private applyCameraIntegerZoom(gameW: number, gameH: number): void {
     const { width: viewW, height: viewH, dpr } = toCssSize(gameW, gameH);
     const minDim = Math.min(viewW, viewH);
-    // 所有 iPad（短邊 >= 680px）升級為 3x 視野，人物與名牌放大 50% 且維持整數倍零接縫
     const cssZoom = minDim >= 680 ? 3 : 2;
     this.cameras.main.setZoom(cssZoom * dpr);
   }
@@ -574,13 +571,18 @@ export class ExploreScene extends Phaser.Scene {
     const prog = gameState.getStageProgress(stageId);
 
     if (
+      gameState.mode === 'sequential' &&
       stageId === 'qianlong' &&
       (prog.qianlongEndingPhase === 'find_qianlong' ||
         prog.qianlongEndingPhase === 'teacher_password')
     ) {
       return PROMPTS.FIND_QIANLONG_AGAIN;
     }
-    if (stageId === 'qianlong' && prog.qianlongEndingPhase === 'ask_qianlong') {
+    if (
+      gameState.mode === 'sequential' &&
+      stageId === 'qianlong' &&
+      prog.qianlongEndingPhase === 'ask_qianlong'
+    ) {
       return PROMPTS.ASK_QIANLONG_HUD;
     }
     if (prog.quizPassed && !prog.passwordPassed) {
@@ -607,6 +609,7 @@ export class ExploreScene extends Phaser.Scene {
       if (trig.kind === 'npc' || trig.kind === 'clue') {
         const visited = prog.visitedNpcs.has(trig.id);
         if (
+          gameState.mode === 'sequential' &&
           trig.id === 'qianlong_emperor' &&
           (prog.qianlongEndingPhase === 'find_qianlong' ||
             prog.qianlongEndingPhase === 'teacher_password' ||
@@ -806,6 +809,7 @@ export class ExploreScene extends Phaser.Scene {
     const prog = gameState.getStageProgress(stageId);
 
     if (
+      gameState.mode === 'sequential' &&
       stageId === 'qianlong' &&
       (prog.qianlongEndingPhase === 'find_qianlong' ||
         prog.qianlongEndingPhase === 'teacher_password' ||
@@ -918,6 +922,7 @@ export class ExploreScene extends Phaser.Scene {
 
     if (trig.kind === 'npc' || trig.kind === 'clue') {
       if (
+        gameState.mode === 'sequential' &&
         stageId === 'qianlong' &&
         trig.id === 'qianlong_emperor' &&
         (prog.qianlongEndingPhase === 'find_qianlong' ||
@@ -951,6 +956,7 @@ export class ExploreScene extends Phaser.Scene {
     const ui = this.registry.get('ui') as HudUI;
 
     if (
+      gameState.mode === 'sequential' &&
       stageId === 'qianlong' &&
       prog.passwordPassed &&
       prog.qianlongEndingPhase !== 'none'
@@ -1031,19 +1037,21 @@ export class ExploreScene extends Phaser.Scene {
     const prog = gameState.getStageProgress(stageId);
     const ui = this.registry.get('ui') as HudUI;
 
-    if (stageId === 'qianlong') {
-      prog.qianlongEndingPhase = 'find_qianlong';
-      this.refreshBadges();
-      ui.showDialogue('過關提示', [PROMPTS.QIANLONG_AFTER_789_ARROW], () => {
-        this.renderExplorePanel(PROMPTS.FIND_QIANLONG_AGAIN);
-      });
-      return;
-    }
-
+    // 課堂分關模式：康熙、雍正、乾隆完成出關密碼後皆直接結束本關並返回分關選單，不會進入向乾隆進諫
     if (gameState.mode === 'class') {
       gameState.completedClassStages.add(stageId);
       ui.showDialogue('完成本關', [PROMPTS.CLASS_STAGE_DONE], () => {
         this.scene.start('ClassSelectScene');
+      });
+      return;
+    }
+
+    // 由康熙順序探索模式：完成康熙、雍正、乾隆全部三帝關卡後，才進入向乾隆進諫環節
+    if (stageId === 'qianlong' && gameState.shouldEnterQianlongRemonstrance()) {
+      prog.qianlongEndingPhase = 'find_qianlong';
+      this.refreshBadges();
+      ui.showDialogue('過關提示', [PROMPTS.QIANLONG_AFTER_789_ARROW], () => {
+        this.renderExplorePanel(PROMPTS.FIND_QIANLONG_AGAIN);
       });
       return;
     }
@@ -1059,24 +1067,27 @@ export class ExploreScene extends Phaser.Scene {
     const prog = gameState.getStageProgress('qianlong');
     const ui = this.registry.get('ui') as HudUI;
 
-    const launchAskStep = () => {
+    const launchRemonstranceStep = () => {
       prog.qianlongEndingPhase = 'ask_qianlong';
       ui.showDialogue('乾隆皇帝', [PROMPTS.QIANLONG_FINAL_ASK_LINE], () => {
-        ui.showQianlongAskPanel(() => {
-          this.playRoyalBoatDeparture();
+        ui.showQianlongRemonstrancePanel({
+          entrySource: 'sequential',
+          onFinish: () => {
+            this.playRoyalBoatDeparture();
+          }
         });
       });
     };
 
     if (prog.qianlongEndingPhase === 'ask_qianlong') {
-      launchAskStep();
+      launchRemonstranceStep();
       return;
     }
 
     ui.showDialogue('乾隆皇帝', [PROMPTS.QIANLONG_WAIT_TEACHER], () => {
       prog.qianlongEndingPhase = 'teacher_password';
       ui.showTeacherPasswordPad(() => {
-        launchAskStep();
+        launchRemonstranceStep();
       });
     });
   }

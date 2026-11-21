@@ -1,14 +1,3 @@
-const MAX_REPLY_CHARS = 40;
-
-const UNRELATED_REPLY =
-  '且慢。請改問康熙、雍正、乾隆或清朝盛世與轉弱之事。';
-
-const INAPPROPRIATE_REPLY =
-  '此問不宜。請改問康熙、雍正、乾隆或清朝史事。';
-
-const TOPIC_FALLBACK_REPLY =
-  '清朝事繁。且問康熙用人、雍正吏治，或朕用兵與南巡之得失。';
-
 const BLOCKED_WORDS = [
   '殺死',
   '血腥',
@@ -27,161 +16,82 @@ const BLOCKED_WORDS = [
   '去死'
 ];
 
-const TOPIC_KEYWORDS = [
-  '康熙',
-  '雍正',
-  '乾隆',
-  '清朝',
-  '滿族',
-  '漢族',
-  '盛世',
-  '轉弱',
-  '國力',
-  '國庫',
-  '貪官',
-  '虧空',
-  '吏治',
-  '準噶爾',
-  '版圖',
-  '南巡',
-  '江南',
-  '派兵',
-  '軍費',
-  '和珅',
-  '農',
-  '田',
-  '人才',
-  '反抗',
-  '財政',
-  '虛耗',
-  '遊江南',
-  '十次',
-  '六次',
-  '七十',
-  '滿漢',
-  '任用',
-  '誰建',
-  '哪個民族',
-  '平定',
-  '貪污',
-  '受賄',
-  '人口',
-  '收成',
-  '盛轉衰',
-  '衰落',
-  '強盛',
-  '為甚麼弱',
-  '為何弱',
-  '為甚麼盛',
-  '為何盛'
-];
-
-interface RuleEntry {
-  match: (q: string) => boolean;
-  answer: string;
+export interface RemonstranceSuggestion {
+  label: string;
+  text: string;
 }
 
-const RULES: RuleEntry[] = [
+export const REMONSTRANCE_SUGGESTIONS: ReadonlyArray<RemonstranceSuggestion> = [
   {
-    match: (q) =>
-      includesAny(q, ['盛轉衰', '轉弱', '為甚麼弱', '為何弱', '衰落', '由盛轉衰']),
-    answer: '版圖雖定，惟南巡與連年用兵虛耗國力，遂由盛轉弱。'
+    label: '嚴懲和珅整頓吏治',
+    text: '皇上，請勿再寵信貪官和珅，應效法雍正皇帝嚴懲貪污、嚴查虧空，令朝廷吏治重歸清明。'
   },
   {
-    match: (q) =>
-      includesAny(q, ['滿族建立', '誰建', '哪個民族']),
-    answer: '清朝由滿族建立；康熙善用各族人才，國基始固。'
+    label: '節制南巡與軍費開支',
+    text: '皇上，六次遊江南與十次派兵花費龐大，請減少奢華排場與連年征戰，休養生息以充實國庫。'
   },
   {
-    match: (q) =>
-      includesAny(q, ['反抗', '漢族士人']),
-    answer: '漢族士人見有出仕之路，反抗意識便漸漸消除。'
+    label: '解決人口與田地不足',
+    text: '皇上，如今人口日漸增加但田地不足，百姓生活艱苦，請鼓勵開墾農田、興修水利並減輕賦稅。'
   },
   {
-    match: (q) =>
-      includesAny(q, ['康熙', '滿漢', '人才', '任用']),
-    answer: '朕祖康熙任用不分滿漢，士人得用，國乃安定。'
-  },
-  {
-    match: (q) =>
-      includesAny(q, ['和珅', '受賄']) ||
-      (q.includes('貪污') && !q.includes('雍正')),
-    answer: '晚年朝中有人受賄壞吏治；盛世之下，隱憂已生。'
-  },
-  {
-    match: (q) =>
-      includesAny(q, ['雍正', '貪官', '虧空', '吏治']),
-    answer: '朕父雍正嚴懲貪官、嚴查虧空，吏治清明，國庫得充。'
-  },
-  {
-    match: (q) =>
-      includesAny(q, ['國庫', '財政']),
-    answer: '整頓虧空後國庫充實，財政改善，此乃盛世之基。'
-  },
-  {
-    match: (q) => q.includes('七十'),
-    answer: '康雍約七十多年治理，國家日漸繁榮，乃盛世根基。'
-  },
-  {
-    match: (q) =>
-      includesAny(q, ['準噶爾', '版圖', '平定']),
-    answer: '朕平定準噶爾，奠定版圖；然征戰亦耗國力，不可不知。'
-  },
-  {
-    match: (q) =>
-      includesAny(q, ['南巡', '江南', '遊江南', '六次']),
-    answer: '朕六次遊江南，可知民情、治河道，惟花費亦甚大。'
-  },
-  {
-    match: (q) =>
-      includesAny(q, ['十次', '派兵', '軍費', '虛耗']),
-    answer: '十次派兵軍費巨大，虛耗康雍積蓄，國力由是轉弱。'
-  },
-  {
-    match: (q) =>
-      includesAny(q, ['農', '田', '人口', '收成']),
-    answer: '人口日眾而田不足，民生艱苦，亦見盛世轉弱之兆。'
-  },
-  {
-    match: (q) =>
-      includesAny(q, ['盛世', '為甚麼盛', '為何盛', '強盛']),
-    answer: '康雍任賢懲貪，國庫充實；朕承其業，盛世一時達巔。'
+    label: '用人唯才居安思危',
+    text: '皇上，盛世之下已現轉弱危機，請效法康熙皇帝用人唯才，廣納大臣諫言，切勿自滿大意。'
   }
 ];
 
-function includesAny(text: string, words: string[]): boolean {
-  return words.some((w) => text.includes(w));
+function includesBlockedWord(text: string): boolean {
+  return BLOCKED_WORDS.some((w) => text.includes(w));
 }
 
-function clampUnicodeChars(str: string, maxChars: number): string {
-  const codePoints = Array.from(str);
-  if (codePoints.length <= maxChars) {
-    return str;
-  }
-  return codePoints.slice(0, maxChars).join('');
-}
+export type BuildPromptResult =
+  | { ok: true; prompt: string }
+  | { ok: false; error: string };
 
-export function askQianlong(rawQuestion: string): string {
-  const q = rawQuestion.trim();
+/**
+ * 將學生的進諫內容組裝為可直接複製貼上至 Gemini 的互動角色扮演與四格漫畫生成指令（Prompt）
+ */
+export function buildQianlongGeminiPrompt(rawAdvice: string): BuildPromptResult {
+  const advice = rawAdvice.trim();
 
-  if (!q) {
-    return clampUnicodeChars(UNRELATED_REPLY, MAX_REPLY_CHARS);
-  }
-
-  if (includesAny(q, BLOCKED_WORDS)) {
-    return clampUnicodeChars(INAPPROPRIATE_REPLY, MAX_REPLY_CHARS);
+  if (!advice) {
+    return {
+      ok: false,
+      error: '請先輸入你想向乾隆皇帝進獻的諫言（或點選上方靈感標籤參考），再產生 Gemini 指令！'
+    };
   }
 
-  const hitsTopic = includesAny(q, TOPIC_KEYWORDS);
-  if (!hitsTopic) {
-    return clampUnicodeChars(UNRELATED_REPLY, MAX_REPLY_CHARS);
+  if (includesBlockedWord(advice)) {
+    return {
+      ok: false,
+      error: '此進諫用語不宜，請以有禮、合乎史實的方式向乾隆皇帝提出治國建議。'
+    };
   }
 
-  for (const rule of RULES) {
-    if (rule.match(q)) {
-      return clampUnicodeChars(rule.answer, MAX_REPLY_CHARS);
-    }
-  }
+  const prompt = [
+    '請你扮演清朝晚年時期的「乾隆皇帝」（以第一人稱「朕」自稱），使用香港繁體中文回應，語氣兼具帝王威嚴與溫和叮嚀，內容深淺適中，適合香港小學六年級常識科學生閱讀與理解。',
+    '',
+    '【歷史情境背景】',
+    '我是一位剛完成《最後的皇朝：康雍乾盛世》探索學習的小學六年級學生，走訪了康熙（不分滿漢用人唯才）、雍正（嚴懲貪官、嚴查虧空充實國庫）與乾隆（平定準噶爾奠定版圖、六次遊江南耗費巨資、十次派兵軍費浩繁、晚年寵信貪官和珅、人口激增導致田地不足）的歷史現場。現在我向你呈上以下治國進諫：',
+    '',
+    '【學生的進諫內容】',
+    `「${advice}」`,
+    '',
+    '請你根據我的進諫內容，完成以下三項任務（請務必同時提供文字回應，並實際生成一張四格漫畫圖像）：',
+    '',
+    '1. 【乾隆皇帝的御批回應】：',
+    '請以清朝晚年乾隆皇帝（「朕」）的身份，針對我的進諫內容作出具體回應（說明朕是否採納、內心的想法或當政的考量）。',
+    '',
+    '2. 【對清朝導致的後果推演】：',
+    '請具體推演這項進諫對「清朝吏治」、「國庫財政」、「百姓民生」及「日後國勢發展」四方面所導致的後果（請用小六常識科學生易明的方式分點說明：若進諫具體可行，說明如何改善問題或延緩由盛轉衰；若進諫空泛、偏頗或有副作用，亦請誠實指出對清朝導致的不良影響），最後附上一句簡短的歷史反思鼓勵我。',
+    '',
+    '3. 【生成四格漫畫圖像】：',
+    '請直接呼叫圖像生成功能，實際繪製並輸出一張「2x2 彩色歷史教育四格漫畫圖像」（不要只寫文字劇本，請務必生成圖片！畫風採用色彩鮮明、線條清晰的兒童歷史繪本／Q版卡通風格），將這項進諫的因果影響視覺化，四格內容依序為：',
+    '・第 1 格（學生進諫）：穿越時空的小學生在宮殿向晚年乾隆皇帝呈上這項治國諫言；',
+    '・第 2 格（皇帝決策）：乾隆皇帝在朝堂上針對這項進諫作出回應與決策；',
+    '・第 3 格（朝政與民生變化）：展現這項決策對清朝官員吏治、國庫銀兩或百姓農田生活帶來的直接轉變；',
+    '・第 4 格（大清國勢結果）：展現清朝日後國勢發展的最終後果，讓小學生一眼看懂這項進諫的影響（每格可配簡短清晰的繁體中文標題）。'
+  ].join('\n');
 
-  return clampUnicodeChars(TOPIC_FALLBACK_REPLY, MAX_REPLY_CHARS);
+  return { ok: true, prompt };
 }

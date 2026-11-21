@@ -1,6 +1,7 @@
 import {
   FINAL_TEACHER_PASSWORD,
   MODE_CLASS_LABEL,
+  MODE_REMONSTRATE_LABEL,
   MODE_SEQUENTIAL_LABEL,
   OPENING_BLURB,
   OPENING_TASK,
@@ -9,10 +10,12 @@ import {
   STAGES,
   STAGE_NAMES,
   STAGE_ORDER,
-  StageId,
-  TITLE
+  StageId
 } from '../data/content';
-import { askQianlong } from '../data/qianlongAsk';
+import {
+  REMONSTRANCE_SUGGESTIONS,
+  buildQianlongGeminiPrompt
+} from '../data/qianlongAsk';
 import { gameState } from '../state/gameState';
 
 export interface DirectionInputState {
@@ -114,7 +117,6 @@ export class HudUI {
     }
   }
 
-  // 右上角「設定」簡單選單（返回標題、課堂分關返回選關、操作說明）
   private openSettingsModal(): void {
     this.isSettingsOpen = true;
     this.resetInputState();
@@ -187,17 +189,12 @@ export class HudUI {
     this.hideMinimap();
   }
 
-  /** Hide exploration minimap (title / opening / class-select / minigames / ending). */
   public hideMinimap(): void {
     this.minimapHost.innerHTML = '';
     this.minimapCanvas = null;
     this.root.classList.remove('explore-with-minimap');
   }
 
-  /**
-   * Draw / refresh the semi-transparent top-left exploration minimap.
-   * Buildings = solid tiles; investigate = npc/clue/minigame; exit = exit kind only.
-   */
   public updateExploreMinimap(opts: {
     cols: number;
     rows: number;
@@ -236,11 +233,9 @@ export class HudUI {
     ctx.fillStyle = 'rgba(22, 14, 10, 0.42)';
     ctx.fillRect(0, 0, cw, ch);
 
-    // Ground wash
     ctx.fillStyle = 'rgba(70, 52, 38, 0.55)';
     ctx.fillRect(pad, pad, mapW, mapH);
 
-    // Building masses from solid grid
     ctx.fillStyle = 'rgba(156, 40, 32, 0.78)';
     for (let y = 0; y < rows; y++) {
       const row = solid[y];
@@ -275,7 +270,6 @@ export class HudUI {
 
     for (const t of triggers) {
       if (t.kind === 'exit') {
-        // Exit (yongzheng_exit / qianlong_exit) — not south_moongate_note
         drawMarker(t.tileX, t.tileY, 'rgba(255, 214, 74, 0.95)', 4.2);
       } else if (
         t.kind === 'npc' ||
@@ -296,14 +290,14 @@ export class HudUI {
       ctx.strokeRect(vx, vy, vw, vh);
     }
 
-    // Player
     drawMarker(playerTileX, playerTileY, 'rgba(90, 180, 255, 1)', 4.6);
   }
 
-  // 1. 標題畫面疊加啟動卡
+  // 1. 標題畫面疊加啟動卡（含「由康熙順序探索」、「課堂分關」、「向乾隆進諫」三個選項）
   public renderTitleScreen(
     onSequential: () => void,
-    onClassSelect: () => void
+    onClassSelect: () => void,
+    onDirectRemonstrate: () => void
   ): void {
     this.clearActiveKeyListener();
     this.closeSettingsModal();
@@ -317,9 +311,10 @@ export class HudUI {
         <div class="btn-stack">
           <button id="btn-seq" class="pixel-btn gold" type="button">${MODE_SEQUENTIAL_LABEL}</button>
           <button id="btn-class" class="pixel-btn" type="button">${MODE_CLASS_LABEL}</button>
+          <button id="btn-remonstrate" class="pixel-btn jade" type="button">${MODE_REMONSTRATE_LABEL}</button>
         </div>
-        <div style="font-size:12px;color:#dfd4c3;text-align:center;line-height:1.4;">
-          點選上方模式進入清朝盛世探索；亦可點按殿前皇帝公仔直接進入該朝（右上角「設定」可查閱操作說明）
+        <div class="title-dock-note">
+          點選上方模式進入清朝盛世探索，或直接「${MODE_REMONSTRATE_LABEL}」；亦可點按殿前皇帝公仔進入分關（右上角「設定」可查閱說明）
         </div>
       </div>
     `;
@@ -330,6 +325,9 @@ export class HudUI {
     this.mainLayer
       .querySelector('#btn-class')
       ?.addEventListener('click', () => onClassSelect());
+    this.mainLayer
+      .querySelector('#btn-remonstrate')
+      ?.addEventListener('click', () => onDirectRemonstrate());
   }
 
   // 2. 開場畫面疊加任務面板
@@ -405,7 +403,7 @@ export class HudUI {
       ?.addEventListener('click', () => onBackTitle());
   }
 
-  // 4. 單一主畫面探索 HUD（左上狀態＋左下圓形搖桿＋右下調查／傾談鍵）
+  // 4. 單一主畫面探索 HUD
   public renderExploreHUD(opts: {
     zoneName: string;
     hintText: string;
@@ -593,7 +591,7 @@ export class HudUI {
     });
   }
 
-  // 5. 疊加對話面板（置於主畫面下方卡牌，開啟時暫停移動並隱藏搖桿）
+  // 5. 疊加對話面板
   public showDialogue(
     speaker: string,
     lines: string[],
@@ -734,7 +732,7 @@ export class HudUI {
     renderQuiz();
   }
 
-  // 7. 疊加數字密碼鍵盤卡牌（絕不預先顯示密碼數字）
+  // 7. 疊加數字密碼鍵盤卡牌
   public showPasswordPad(opts: {
     title: string;
     hint: string;
@@ -856,7 +854,7 @@ export class HudUI {
     renderPad();
   }
 
-  // 8. 老師最後密碼與離線問乾隆卡牌
+  // 8. 老師最後密碼與「向乾隆進諫（輸出 Gemini Prompt）」卡牌
   public showTeacherPasswordPad(onSuccess: () => void): void {
     this.showPasswordPad({
       title: '老師的最後密碼',
@@ -867,91 +865,193 @@ export class HudUI {
     });
   }
 
-  public showQianlongAskPanel(onCompleteDeparture: () => void): void {
+  private async copyTextToClipboard(
+    text: string,
+    fallbackTextarea?: HTMLTextAreaElement | null
+  ): Promise<boolean> {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      try {
+        await navigator.clipboard.writeText(text);
+        return true;
+      } catch {
+        // Fall through to execCommand fallback (e.g. Google Sites iframe or iPad Safari restriction)
+      }
+    }
+
+    try {
+      const target = fallbackTextarea || document.createElement('textarea');
+      const isTemp = !fallbackTextarea;
+      if (isTemp) {
+        target.value = text;
+        target.setAttribute('readonly', 'true');
+        target.style.position = 'fixed';
+        target.style.left = '-9999px';
+        document.body.appendChild(target);
+      }
+      target.focus();
+      target.select();
+      target.setSelectionRange(0, text.length);
+      const ok = document.execCommand('copy');
+      if (isTemp) {
+        document.body.removeChild(target);
+      }
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * 向乾隆皇帝進諫面板：
+   * 乾隆不會直接回答，而是根據學生輸入的進諫內容產生一段可複製貼到 Gemini 的專屬 Prompt，
+   * 讓 Gemini 以乾隆皇帝身份回應學生的進諫、推演對清朝導致的後果，並生成四格漫畫圖像。
+   */
+  public showQianlongRemonstrancePanel(opts: {
+    entrySource: 'sequential' | 'title';
+    onFinish: () => void;
+  }): void {
     this.clearActiveKeyListener();
+    this.hideMinimap();
+    this.closeSettingsModal();
     this.isPanelModalOpen = true;
     this.resetInputState();
 
-    const samplePrompts = [
-      '清朝為甚麼由盛轉弱？',
-      '康熙怎樣任用人才？',
-      '雍正怎樣整頓貪官？',
-      '六次遊江南有甚麼影響？'
-    ];
+    const chipsHtml = REMONSTRANCE_SUGGESTIONS.map(
+      (item, idx) =>
+        `<button type="button" class="topic-chip-btn" data-chip-idx="${idx}">💡 ${item.label}</button>`
+    ).join('');
 
-    const chipsHtml = samplePrompts
-      .map(
-        (p) =>
-          `<button type="button" class="topic-chip-btn" data-sample="${p}">${p}</button>`
-      )
-      .join('');
+    const finishBtnLabel =
+      opts.entrySource === 'sequential' ? '乘御船返回現代 ▶' : '返回主畫面';
 
     this.mainLayer.innerHTML = `
       <div class="overlay-backdrop">
-        <div class="card-modal">
+        <div class="card-modal" style="max-width:580px;">
           <div class="panel-header">
-            <span>向乾隆皇帝提出最後一問</span>
+            <span>向乾隆皇帝進諫</span>
+            <span class="badge-sub">生成 Gemini 指令＋四格漫畫</span>
           </div>
-          <div class="hint-banner">${PROMPTS.QIANLONG_FINAL_ASK_LINE}</div>
+          <div class="hint-banner">
+            請寫下你想向乾隆皇帝進獻的治國諫言（乾隆不會在此直接回答，系統會輸出專屬 Prompt，讓你一鍵複製貼到 Gemini，由 Gemini 以乾隆身份回應、推演清朝後果，並自動繪製「四格漫畫圖像」！）
+          </div>
           <div class="panel-box" style="display:flex;flex-direction:column;gap:8px;">
-            <input id="qianlong-q-input" class="ask-input" type="text" maxlength="60" placeholder="請輸入你想問乾隆的問題（或點選下方題目參考）" />
+            <label for="qianlong-advice-input" style="font-size:14px;font-weight:800;color:#591812;">
+              你的進諫內容（可自由撰寫，或點選下方靈感再作修改）：
+            </label>
+            <textarea
+              id="qianlong-advice-input"
+              class="ask-input remonstrance-textarea"
+              rows="3"
+              maxlength="280"
+              placeholder="例如：皇上，請勿再寵信貪官和珅，應嚴懲貪污、減少南巡與軍費開支，並開墾農田照顧百姓……"
+            ></textarea>
             <div class="topic-chips">${chipsHtml}</div>
-            <button id="btn-submit-q" class="pixel-btn gold" type="button">向乾隆發問</button>
+            <button id="btn-gen-prompt" class="pixel-btn gold" type="button">
+              生成 Gemini 進諫 Prompt（含四格漫畫）
+            </button>
           </div>
-          <div id="qianlong-reply-area"></div>
+          <div id="qianlong-prompt-area"></div>
+          <button id="btn-remonstrate-finish" class="pixel-btn secondary" type="button">
+            ${finishBtnLabel}
+          </button>
         </div>
       </div>
     `;
 
-    const inputEl =
-      this.mainLayer.querySelector<HTMLInputElement>('#qianlong-q-input')!;
-    const replyArea = this.mainLayer.querySelector<HTMLElement>(
-      '#qianlong-reply-area'
+    const inputEl = this.mainLayer.querySelector<HTMLTextAreaElement>(
+      '#qianlong-advice-input'
+    )!;
+    const promptArea = this.mainLayer.querySelector<HTMLElement>(
+      '#qianlong-prompt-area'
+    )!;
+    const finishBtn = this.mainLayer.querySelector<HTMLButtonElement>(
+      '#btn-remonstrate-finish'
     )!;
 
-    this.mainLayer
-      .querySelectorAll<HTMLButtonElement>('[data-sample]')
-      .forEach((btn) => {
-        btn.addEventListener('click', () => {
-          inputEl.value = btn.dataset.sample || '';
-          inputEl.focus();
-        });
-      });
+    let latestPrompt = '';
 
-    const handleAsk = () => {
-      const q = inputEl.value;
-      const answer = askQianlong(q);
-      const isRedirect =
-        answer.startsWith('且慢。') || answer.startsWith('此問不宜。');
+    const renderGeneratedPrompt = () => {
+      const result = buildQianlongGeminiPrompt(inputEl.value);
+      if (!result.ok) {
+        latestPrompt = '';
+        promptArea.innerHTML = `<div class="feedback-msg error">${result.error}</div>`;
+        return;
+      }
 
-      replyArea.innerHTML = `
-        <div class="panel-box" style="display:flex;flex-direction:column;gap:8px;background:#fff9eb;">
-          <div><span class="dialogue-speaker">乾隆皇帝</span></div>
-          <div style="font-size:16px;font-weight:800;color:#241914;">「${answer}」</div>
-          ${
-            isRedirect
-              ? `<div style="font-size:12.5px;color:#8c2119;font-weight:700;">請修改問題，向乾隆請教康雍乾或清朝盛衰相關史事。</div>`
-              : `<button id="btn-depart-modern" class="pixel-btn jade" type="button">乘御船返回現代 ▶</button>`
-          }
+      latestPrompt = result.prompt;
+      promptArea.innerHTML = `
+        <div class="panel-box" style="display:flex;flex-direction:column;gap:8px;background:#fffaf0;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+            <span style="font-size:14px;font-weight:800;color:#245943;">✓ 已生成專屬 Gemini Prompt（含四格漫畫指令）：</span>
+            <span style="font-size:12px;font-weight:700;color:#6b5239;">複製後請直接貼到 Gemini 發送</span>
+          </div>
+          <textarea
+            id="gemini-prompt-output"
+            class="ask-input prompt-output-box"
+            rows="6"
+            readonly
+          ></textarea>
+          <button id="btn-copy-prompt" class="pixel-btn jade" type="button">
+            📋 複製 Prompt（直接貼到 Gemini 生成回應與四格漫畫）
+          </button>
+          <div id="copy-status-banner" style="display:none;"></div>
         </div>
       `;
 
-      replyArea
-        .querySelector('#btn-depart-modern')
-        ?.addEventListener('click', () => {
-          this.isPanelModalOpen = false;
-          onCompleteDeparture();
+      const outputTextarea = promptArea.querySelector<HTMLTextAreaElement>(
+        '#gemini-prompt-output'
+      )!;
+      outputTextarea.value = latestPrompt;
+
+      const copyBtn = promptArea.querySelector<HTMLButtonElement>(
+        '#btn-copy-prompt'
+      )!;
+      const statusBanner = promptArea.querySelector<HTMLElement>(
+        '#copy-status-banner'
+      )!;
+
+      copyBtn.addEventListener('click', () => {
+        void this.copyTextToClipboard(latestPrompt, outputTextarea).then((copied) => {
+          statusBanner.style.display = 'block';
+          if (copied) {
+            copyBtn.textContent = '✓ 已複製 Prompt！可再次點按複製';
+            statusBanner.className = 'feedback-msg ok';
+            statusBanner.textContent =
+              '已成功複製到剪貼簿！現在請開啟你的 Gemini 貼上（Paste）並發送，即可查看乾隆皇帝的御批回應、清朝國運後果與「四格漫畫圖像」！';
+            if (opts.entrySource === 'sequential') {
+              finishBtn.className = 'pixel-btn gold';
+            }
+          } else {
+            statusBanner.className = 'feedback-msg error';
+            statusBanner.textContent =
+              '瀏覽器限制自動複製，已為你全選上方文字，請長按文字框點選「拷貝／複製」後貼到 Gemini。';
+            outputTextarea.focus();
+            outputTextarea.select();
+          }
         });
+      });
     };
 
     this.mainLayer
-      .querySelector('#btn-submit-q')
-      ?.addEventListener('click', () => handleAsk());
-    inputEl.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        handleAsk();
-      }
+      .querySelectorAll<HTMLButtonElement>('[data-chip-idx]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const idx = Number(btn.dataset.chipIdx);
+          const suggestion = REMONSTRANCE_SUGGESTIONS[idx];
+          if (suggestion) {
+            inputEl.value = suggestion.text;
+            renderGeneratedPrompt();
+          }
+        });
+      });
+
+    this.mainLayer
+      .querySelector('#btn-gen-prompt')
+      ?.addEventListener('click', () => renderGeneratedPrompt());
+
+    finishBtn.addEventListener('click', () => {
+      this.isPanelModalOpen = false;
+      opts.onFinish();
     });
   }
 
@@ -1010,8 +1110,8 @@ export class HudUI {
           <div class="panel-header">
             <span>返回現代・課堂總結與反思</span>
           </div>
-          <div style="font-size:14.5px;line-height:1.55;font-weight:700;">${PROMPTS.ENDING_RETURNED}</div>
-          <div class="hint-banner" style="font-size:15px;">反思問題：${PROMPTS.ENDING_REFLECTION}</div>
+          <div style="font-size:15px;line-height:1.58;font-weight:700;">${PROMPTS.ENDING_RETURNED}</div>
+          <div class="hint-banner" style="font-size:14.5px;">${PROMPTS.ENDING_REFLECTION}</div>
           <div class="feedback-msg ok" style="font-size:14px;">${PROMPTS.ENDING_SUMMARY}</div>
           <div class="btn-row">
             ${
