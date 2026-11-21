@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { CHAR_HD_SCALE, toCssSize } from '../gfx/CrispVisuals';
 import { CHAR_IDLE_FRAME, TILE_SIZE, TileIndex } from '../gfx/PixelArtGenerator';
-import { gameState } from '../state/gameState';
+import { MEDAL_LABELS, MedalRank, gameState } from '../state/gameState';
 import { HudUI } from '../ui/HudUI';
 import { clearStaleTitleOrOpeningHud, stopOtherScenes } from '../scenes/exclusiveScene';
 
@@ -82,6 +82,7 @@ export class TalentMinigame extends Phaser.Scene {
   private cardContainers: Map<string, Phaser.GameObjects.Container> = new Map();
   private cardBasePos: Map<string, { x: number; y: number }> = new Map();
   private finished = false;
+  private submitAttempts = 0;
   private draggingId: string | null = null;
   private dragOffX = 0;
   private dragOffY = 0;
@@ -92,6 +93,7 @@ export class TalentMinigame extends Phaser.Scene {
 
   public create(): void {
     this.finished = false;
+    this.submitAttempts = 0;
     this.selectedCandidateId = null;
     this.assignments.clear();
     this.cardContainers.clear();
@@ -130,8 +132,8 @@ export class TalentMinigame extends Phaser.Scene {
       .rectangle(STAGE_W / 2, 28, STAGE_W - 24, 40, 0x7a1b13, 0.96)
       .setStrokeStyle(2.5, 0xf0c246);
     this.add
-      .text(STAGE_W / 2, 28, '康熙：用人唯才・滿漢一家（點選或拖放人才到職位）', {
-        fontSize: '15px',
+      .text(STAGE_W / 2, 28, '康熙：用人唯才・滿漢一家（一次配對全中可獲御賜金印！）', {
+        fontSize: '14.5px',
         color: '#ffe89e',
         fontStyle: 'bold',
         stroke: '#2b0b06',
@@ -384,6 +386,7 @@ export class TalentMinigame extends Phaser.Scene {
 
   private evaluateRoster(): void {
     const ui = this.registry.get('ui') as HudUI;
+    this.submitAttempts++;
 
     let appointedManchu = 0;
     let appointedHan = 0;
@@ -424,20 +427,22 @@ export class TalentMinigame extends Phaser.Scene {
     }
 
     this.finished = true;
-    gameState.markMinigameCompleted('talent_game', 'kangxi');
+    const medal: MedalRank =
+      this.submitAttempts <= 1 ? 'gold' : this.submitAttempts === 2 ? 'silver' : 'bronze';
+    gameState.markMinigameCompleted('talent_game', 'kangxi', medal);
 
     const winOverlay = this.add.container(0, 0).setDepth(60);
     const panel = this.add
-      .rectangle(STAGE_W / 2, STAGE_H / 2, 436, 176, 0x1e4a38, 0.97)
+      .rectangle(STAGE_W / 2, STAGE_H / 2, 444, 192, 0x1e4a38, 0.97)
       .setStrokeStyle(3, 0xf2c749);
 
     const txt = this.add
       .text(
         STAGE_W / 2,
-        STAGE_H / 2 - 26,
-        '挑戰成功！\n「只要是人才，不論滿族還是漢族都會任用」\n漢族士人反抗意識消除，朝廷人才鼎盛！',
+        STAGE_H / 2 - 28,
+        `挑戰成功！【${MEDAL_LABELS[medal]}】\n「只要是人才，不論滿族還是漢族都會任用」\n漢族士人反抗意識消除，民心與國庫同步提升！`,
         {
-          fontSize: '16px',
+          fontSize: '15.5px',
           color: '#fff8e7',
           fontStyle: 'bold',
           align: 'center',
@@ -449,12 +454,12 @@ export class TalentMinigame extends Phaser.Scene {
       .setOrigin(0.5);
 
     const backBtn = this.add
-      .rectangle(STAGE_W / 2, STAGE_H / 2 + 54, 216, 40, 0xf0c451, 1)
+      .rectangle(STAGE_W / 2, STAGE_H / 2 + 58, 216, 40, 0xf0c451, 1)
       .setStrokeStyle(2, 0x523809)
       .setInteractive({ useHandCursor: true });
 
     const backLabel = this.add
-      .text(STAGE_W / 2, STAGE_H / 2 + 54, '完成挑戰，返回庭院 ▶', {
+      .text(STAGE_W / 2, STAGE_H / 2 + 58, '完成挑戰，返回庭院 ▶', {
         fontSize: '15px',
         color: '#241304',
         fontStyle: 'bold'
@@ -465,7 +470,7 @@ export class TalentMinigame extends Phaser.Scene {
     winOverlay.add([panel, txt, backBtn, backLabel]);
 
     ui.updateMinigameStatus(
-      '<span style="color:#98ffd0;font-weight:800;">✓ 已完成「用人唯才挑戰」！只要是人才，不論滿族還是漢族都會任用。</span>'
+      `<span style="color:#98ffd0;font-weight:800;">✓ 獲得【${MEDAL_LABELS[medal]}】！只要是人才，不論滿族還是漢族都會任用。</span>`
     );
   }
 }

@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { CHAR_HD_SCALE, toCssSize } from '../gfx/CrispVisuals';
 import { CHAR_IDLE_FRAME, TILE_SIZE, TileIndex } from '../gfx/PixelArtGenerator';
 import { bindRawPointerBridge } from '../input/rawPointerBridge';
-import { gameState } from '../state/gameState';
+import { MEDAL_LABELS, MedalRank, gameState } from '../state/gameState';
 import { HudUI } from '../ui/HudUI';
 import { clearStaleTitleOrOpeningHud, stopOtherScenes } from '../scenes/exclusiveScene';
 
@@ -28,6 +28,7 @@ export class ArcheryMinigame extends Phaser.Scene {
   private targets: RebelTarget[] = [];
   private arrows: FlyingArrow[] = [];
   private score = 0;
+  private streak = 0;
   private arrowsLeft = TOTAL_ARROWS;
   private ended = false;
   private hudText!: Phaser.GameObjects.Text;
@@ -44,6 +45,7 @@ export class ArcheryMinigame extends Phaser.Scene {
     this.targets = [];
     this.arrows = [];
     this.score = 0;
+    this.streak = 0;
     this.arrowsLeft = TOTAL_ARROWS;
     this.ended = false;
     this.aimAngle = -Math.PI / 2;
@@ -88,7 +90,7 @@ export class ArcheryMinigame extends Phaser.Scene {
 
     this.hudText = this.add
       .text(STAGE_W / 2, 26, '', {
-        fontSize: '15px',
+        fontSize: '14px',
         color: '#ffe89e',
         fontStyle: 'bold',
         stroke: '#260b06',
@@ -107,7 +109,6 @@ export class ArcheryMinigame extends Phaser.Scene {
       this.spawnTargetAt(340 - i * 90, ln.y, ln.speed);
     });
 
-    // 底部清兵射手（4x 高清輪廓精靈）與雕弓瞄準器
     this.add
       .sprite(STAGE_W / 2, 364, 'char_qing_soldier', CHAR_IDLE_FRAME.up)
       .setScale(1.85 / CHAR_HD_SCALE);
@@ -123,11 +124,6 @@ export class ArcheryMinigame extends Phaser.Scene {
 
     const guideDot = this.add.rectangle(0, -30, 4, 15, 0xffe48a, 1);
     this.bowContainer.add([bowArc, guideDot]);
-
-    const soldierPad = this.add
-      .rectangle(STAGE_W / 2, 358, 140, 100, 0xffffff, 0.001)
-      .setDepth(24);
-    void soldierPad;
 
     const SOLDIER_HIT_R = 78;
     const isOnSoldier = (wx: number, wy: number) => {
@@ -175,7 +171,7 @@ export class ArcheryMinigame extends Phaser.Scene {
     ui.renderMinigamePanel({
       title: '射箭平亂挑戰（乾隆朝）',
       instruction:
-        '點士兵向前射箭；點叛軍標靶朝該目標射；點空地朝該處射（電腦可用左右鍵瞄準、空白鍵發射）。擊倒 6 個標靶即過關！',
+        '點叛軍標靶直接瞄準射箭（剩餘 7 支箭以上過關獲御賜金印，體驗精兵省餉）！擊倒 6 個標靶即過關！',
       onRetry: () => this.scene.restart(),
       onLeave: () => this.scene.start('ExploreScene')
     });
@@ -268,8 +264,9 @@ export class ArcheryMinigame extends Phaser.Scene {
   }
 
   private updateHud(): void {
+    const streakStr = this.streak >= 2 ? `　｜　🎯百步穿楊 x${this.streak}` : '';
     this.hudText.setText(
-      `擊倒標靶：${this.score} / ${GOAL_SCORE}　｜　剩餘羽箭：${this.arrowsLeft}`
+      `擊倒標靶：${this.score}/${GOAL_SCORE}　｜　剩餘羽箭：${this.arrowsLeft}${streakStr}`
     );
   }
 
@@ -332,6 +329,8 @@ export class ArcheryMinigame extends Phaser.Scene {
       ) {
         arr.active = false;
         arr.line.destroy();
+        this.streak = 0;
+        this.updateHud();
       }
     }
 
@@ -344,10 +343,12 @@ export class ArcheryMinigame extends Phaser.Scene {
   private onTargetHit(target: RebelTarget): void {
     target.active = false;
     this.score++;
+    this.streak++;
     this.updateHud();
 
+    const label = this.streak >= 2 ? `連中 x${this.streak}！` : '命中！';
     const hitText = this.add
-      .text(target.container.x, target.container.y, '命中！', {
+      .text(target.container.x, target.container.y, label, {
         fontSize: '15px',
         color: '#ffe48a',
         fontStyle: 'bold',
@@ -382,11 +383,13 @@ export class ArcheryMinigame extends Phaser.Scene {
   private endMinigame(won: boolean): void {
     this.ended = true;
     const ui = this.registry.get('ui') as HudUI;
+    const medal: MedalRank =
+      this.arrowsLeft >= 7 ? 'gold' : this.arrowsLeft >= 4 ? 'silver' : 'bronze';
 
     if (won) {
-      gameState.markMinigameCompleted('archery_game', 'qianlong');
+      gameState.markMinigameCompleted('archery_game', 'qianlong', medal);
       ui.updateMinigameStatus(
-        '<span style="color:#98ffd0;font-weight:800;">✓ 已完成「射箭平亂挑戰」！平定準噶爾叛亂，奠定清朝的版圖。</span>'
+        `<span style="color:#98ffd0;font-weight:800;">✓ 獲得【${MEDAL_LABELS[medal]}】！平定準噶爾叛亂，奠定清朝的版圖。</span>`
       );
     } else {
       ui.updateMinigameStatus(
@@ -399,20 +402,20 @@ export class ArcheryMinigame extends Phaser.Scene {
       .rectangle(
         STAGE_W / 2,
         STAGE_H / 2,
-        436,
-        180,
+        444,
+        192,
         won ? 0x1e4a38 : 0x5c1914,
         0.97
       )
       .setStrokeStyle(3, 0xf2c749);
 
     const msg = won
-      ? '大捷！成功平定準噶爾叛亂，\n奠定清朝的版圖！\n（惟十次派兵軍費巨大，亦消耗不少國力）'
+      ? `大捷！【${MEDAL_LABELS[medal]}】\n成功平定準噶爾叛亂，奠定清朝的版圖！\n（惟十次派兵軍費巨大，亦消耗康雍積累的國力）`
       : '羽箭已用盡，尚未擊倒足夠目標。\n請重新瞄準再試一次！';
 
     const txt = this.add
-      .text(STAGE_W / 2, STAGE_H / 2 - 24, msg, {
-        fontSize: '15.5px',
+      .text(STAGE_W / 2, STAGE_H / 2 - 26, msg, {
+        fontSize: '15px',
         color: '#fff8e7',
         fontStyle: 'bold',
         align: 'center',
@@ -423,14 +426,14 @@ export class ArcheryMinigame extends Phaser.Scene {
       .setOrigin(0.5);
 
     const btn = this.add
-      .rectangle(STAGE_W / 2, STAGE_H / 2 + 54, 224, 40, 0xf0c451, 1)
+      .rectangle(STAGE_W / 2, STAGE_H / 2 + 56, 224, 40, 0xf0c451, 1)
       .setStrokeStyle(2, 0x523809)
       .setInteractive({ useHandCursor: true });
 
     const btnLabel = this.add
       .text(
         STAGE_W / 2,
-        STAGE_H / 2 + 54,
+        STAGE_H / 2 + 56,
         won ? '完成挑戰，返回戶外 ▶' : '重新挑戰 ↻',
         {
           fontSize: '15px',

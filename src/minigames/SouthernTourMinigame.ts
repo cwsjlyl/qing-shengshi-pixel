@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { toCssSize } from '../gfx/CrispVisuals';
 import { TILE_SIZE, TileIndex } from '../gfx/PixelArtGenerator';
 import { bindRawPointerBridge } from '../input/rawPointerBridge';
-import { gameState } from '../state/gameState';
+import { MEDAL_LABELS, MedalRank, gameState } from '../state/gameState';
 import { HudUI } from '../ui/HudUI';
 import { clearStaleTitleOrOpeningHud, stopOtherScenes } from '../scenes/exclusiveScene';
 
@@ -21,17 +21,17 @@ interface VoyageStop {
 interface CanalObstacle {
   sprite: Phaser.GameObjects.Container;
   laneIdx: number;
-  kind: 'rock' | 'inspect';
+  kind: 'rock' | 'inspect' | 'luxury';
   handled: boolean;
 }
 
 const VOYAGES: VoyageStop[] = [
-  { voyageNo: 1, city: '江蘇・揚州', note: '巡視運河樞紐，接駕排場盛大', costSilver: 180 },
-  { voyageNo: 2, city: '江蘇・南京', note: '體察江寧民情，賞賜地方官民', costSilver: 180 },
-  { voyageNo: 3, city: '江蘇・蘇州', note: '視察江南商貿，修繕行宮園林', costSilver: 180 },
-  { voyageNo: 4, city: '浙江・杭州', note: '督導治理河道與海塘工程', costSilver: 180 },
-  { voyageNo: 5, city: '長江三角洲・蘇州', note: '再次南巡蘇浙，隨行耗費浩繁', costSilver: 180 },
-  { voyageNo: 6, city: '長江三角洲・杭州', note: '第六次遊江南，國庫銀兩大減', costSilver: 180 }
+  { voyageNo: 1, city: '江蘇・揚州', note: '巡視運河樞紐，接駕排場盛大', costSilver: 165 },
+  { voyageNo: 2, city: '江蘇・南京', note: '體察江寧民情，賞賜地方官民', costSilver: 165 },
+  { voyageNo: 3, city: '江蘇・蘇州', note: '視察江南商貿，修繕行宮園林', costSilver: 165 },
+  { voyageNo: 4, city: '浙江・杭州', note: '督導治理河道與海塘工程', costSilver: 165 },
+  { voyageNo: 5, city: '長江三角洲・蘇州', note: '再次南巡蘇浙，隨行耗費浩繁', costSilver: 165 },
+  { voyageNo: 6, city: '長江三角洲・杭州', note: '第六次遊江南，國庫銀兩大減', costSilver: 165 }
 ];
 
 export class SouthernTourMinigame extends Phaser.Scene {
@@ -42,6 +42,7 @@ export class SouthernTourMinigame extends Phaser.Scene {
   private boatDragOffY = 0;
   private voyageIdx = 0;
   private treasurySilver = INITIAL_TREASURY;
+  private inspectCount = 0;
   private hullHp = 4;
   private distanceElapsed = 0;
   private ended = false;
@@ -64,6 +65,7 @@ export class SouthernTourMinigame extends Phaser.Scene {
     this.currentLane = 1;
     this.voyageIdx = 0;
     this.treasurySilver = INITIAL_TREASURY;
+    this.inspectCount = 0;
     this.hullHp = 4;
     this.distanceElapsed = 0;
     this.ended = false;
@@ -216,7 +218,7 @@ export class SouthernTourMinigame extends Phaser.Scene {
     this.applyVoyageTransition(0);
 
     this.spawnTimer = this.time.addEvent({
-      delay: 920,
+      delay: 880,
       loop: true,
       callback: () => this.spawnCanalItem()
     });
@@ -232,7 +234,7 @@ export class SouthernTourMinigame extends Phaser.Scene {
     ui.renderMinigamePanel({
       title: '六次乘船下江南挑戰（乾隆朝）',
       instruction:
-        '用手指拖動御船（或按方向鍵）在運河內上下左右移動，避開暗礁，完成六次遊江南航程，並觀察上方國庫存銀遞減！',
+        '拖動御船避開「暗礁」與耗銀「奢華宴樂」，多收集綠色「治河民情」節省開支爭取御賜金印！',
       onRetry: () => this.scene.restart(),
       onLeave: () => this.scene.start('ExploreScene')
     });
@@ -248,20 +250,9 @@ export class SouthernTourMinigame extends Phaser.Scene {
     cam.centerOn(STAGE_W / 2, STAGE_H / 2 + 18);
   }
 
-  private setBoatLane(lane: number): void {
-    this.currentLane = lane;
-    this.tweens.add({
-      targets: this.boat,
-      x: Phaser.Math.Clamp(this.boat.x, 56, STAGE_W - 72),
-      y: LANE_Y[lane],
-      duration: 130,
-      ease: 'Sine.easeOut'
-    });
-  }
-
   private applyVoyageTransition(idx: number): void {
     const stop = VOYAGES[idx];
-    this.treasurySilver = Math.max(120, this.treasurySilver - stop.costSilver);
+    this.treasurySilver = Math.max(80, this.treasurySilver - stop.costSilver);
     this.refreshTopHud();
 
     const costFloat = this.add
@@ -316,14 +307,14 @@ export class SouthernTourMinigame extends Phaser.Scene {
   private refreshTopHud(): void {
     const stop = VOYAGES[Math.min(this.voyageIdx, VOYAGES.length - 1)];
     this.titleText.setText(
-      `航程：第 ${stop.voyageNo} / 6 次南巡　｜　船身穩固：${'♥'.repeat(this.hullHp)}`
+      `第 ${stop.voyageNo}/6 次南巡　｜　船身：${'♥'.repeat(this.hullHp)}　｜　治河：${this.inspectCount}`
     );
     this.cityBannerText.setText(`${stop.city} — ${stop.note}`);
     this.silverText.setText(`${this.treasurySilver} 萬兩`);
 
     const ratio = Phaser.Math.Clamp(
       this.treasurySilver / INITIAL_TREASURY,
-      0.08,
+      0.06,
       1
     );
     this.silverBarFill.width = 188 * ratio;
@@ -333,12 +324,14 @@ export class SouthernTourMinigame extends Phaser.Scene {
   private spawnCanalItem(): void {
     if (this.ended) return;
     const laneIdx = Phaser.Math.Between(0, 2);
-    const isInspect = Math.random() < 0.35;
+    const roll = Math.random();
+    const kind: 'rock' | 'inspect' | 'luxury' =
+      roll < 0.36 ? 'inspect' : roll < 0.58 ? 'luxury' : 'rock';
     const cont = this.add
       .container(STAGE_W + 44, LANE_Y[laneIdx])
       .setDepth(16);
 
-    if (isInspect) {
+    if (kind === 'inspect') {
       const flag = this.add
         .image(0, 0, 'palace_tiles', TileIndex.FLEET_BANNER)
         .setScale(1.45);
@@ -352,6 +345,20 @@ export class SouthernTourMinigame extends Phaser.Scene {
         })
         .setOrigin(0.5);
       cont.add([flag, lbl]);
+    } else if (kind === 'luxury') {
+      const incense = this.add
+        .image(0, 0, 'palace_tiles', TileIndex.BRONZE_INCENSE)
+        .setScale(1.4);
+      const lbl = this.add
+        .text(0, -23, '奢華宴樂', {
+          fontSize: '11.5px',
+          color: '#fff0c2',
+          backgroundColor: '#6b235c',
+          padding: { x: 4, y: 1.5 },
+          fontStyle: 'bold'
+        })
+        .setOrigin(0.5);
+      cont.add([incense, lbl]);
     } else {
       const rock = this.add
         .image(0, 2, 'palace_tiles', TileIndex.TAIHU_ROCK)
@@ -371,7 +378,7 @@ export class SouthernTourMinigame extends Phaser.Scene {
     this.obstacles.push({
       sprite: cont,
       laneIdx,
-      kind: isInspect ? 'inspect' : 'rock',
+      kind,
       handled: false
     });
   }
@@ -450,11 +457,35 @@ export class SouthernTourMinigame extends Phaser.Scene {
             this.finishVoyage(false);
             return;
           }
+        } else if (obs.kind === 'luxury') {
+          obs.sprite.setVisible(false);
+          this.treasurySilver = Math.max(60, this.treasurySilver - 45);
+          this.refreshTopHud();
+          const warn = this.add
+            .text(this.boat.x, this.boat.y - 28, '接駕奢華 -45萬兩！', {
+              fontSize: '13.5px',
+              color: '#ffb0e6',
+              fontStyle: 'bold',
+              stroke: '#38102e',
+              strokeThickness: 3
+            })
+            .setOrigin(0.5)
+            .setDepth(35);
+          this.tweens.add({
+            targets: warn,
+            y: warn.y - 20,
+            alpha: 0,
+            duration: 750,
+            onComplete: () => warn.destroy()
+          });
         } else {
           obs.sprite.setVisible(false);
+          this.inspectCount++;
+          this.treasurySilver = Math.min(INITIAL_TREASURY, this.treasurySilver + 20);
+          this.refreshTopHud();
           const praise = this.add
-            .text(this.boat.x, this.boat.y - 28, '瞭解民情・治理河道！', {
-              fontSize: '13.5px',
+            .text(this.boat.x, this.boat.y - 28, '治理河道・節省公帑 +20萬兩', {
+              fontSize: '13px',
               color: '#98ffd0',
               fontStyle: 'bold',
               stroke: '#16382b',
@@ -466,7 +497,7 @@ export class SouthernTourMinigame extends Phaser.Scene {
             targets: praise,
             y: praise.y - 20,
             alpha: 0,
-            duration: 700,
+            duration: 750,
             onComplete: () => praise.destroy()
           });
         }
@@ -487,11 +518,17 @@ export class SouthernTourMinigame extends Phaser.Scene {
     this.spawnTimer?.remove(false);
 
     const ui = this.registry.get('ui') as HudUI;
+    const medal: MedalRank =
+      this.hullHp >= 3 && this.inspectCount >= 3
+        ? 'gold'
+        : this.hullHp >= 2
+          ? 'silver'
+          : 'bronze';
 
     if (won) {
-      gameState.markMinigameCompleted('tour_game', 'qianlong');
+      gameState.markMinigameCompleted('tour_game', 'qianlong', medal);
       ui.updateMinigameStatus(
-        '<span style="color:#98ffd0;font-weight:800;">✓ 已完成「六下江南挑戰」！看見南巡花費龐大耗減國庫，同時能瞭解民情、治理河道。</span>'
+        `<span style="color:#98ffd0;font-weight:800;">✓ 獲得【${MEDAL_LABELS[medal]}】！看見南巡耗減國庫，同時能瞭解民情、治理河道。</span>`
       );
     } else {
       ui.updateMinigameStatus(
@@ -504,20 +541,20 @@ export class SouthernTourMinigame extends Phaser.Scene {
       .rectangle(
         STAGE_W / 2,
         STAGE_H / 2 + 10,
-        460,
-        198,
+        468,
+        204,
         won ? 0x1e4a38 : 0x5c1914,
         0.97
       )
       .setStrokeStyle(3, 0xf2c749);
 
     const summary = won
-      ? '六次乘船下江南完成！\n經過揚州、南京、蘇州、杭州（江南長江三角洲）。\n國庫由 1200 萬兩減至 120 萬兩：可見南巡花費龐大，\n耗用人力物力；但同時也能瞭解民情、治理河道！'
+      ? `六次乘船下江南完成！【${MEDAL_LABELS[medal]}】\n途經揚州、南京、蘇州、杭州（長江三角洲）。\n國庫餘銀 ${this.treasurySilver} 萬兩：可見南巡花費龐大耗損國力，\n惟視察治河民情（共 ${this.inspectCount} 次）亦有助地方安定！`
       : '御船多次觸礁需要修整。\n請避開暗礁，重新完成六次下江南航程！';
 
     const txt = this.add
-      .text(STAGE_W / 2, STAGE_H / 2 - 18, summary, {
-        fontSize: '14.5px',
+      .text(STAGE_W / 2, STAGE_H / 2 - 20, summary, {
+        fontSize: '14px',
         color: '#fff8e7',
         fontStyle: 'bold',
         align: 'center',
@@ -528,14 +565,14 @@ export class SouthernTourMinigame extends Phaser.Scene {
       .setOrigin(0.5);
 
     const btn = this.add
-      .rectangle(STAGE_W / 2, STAGE_H / 2 + 70, 226, 38, 0xf0c451, 1)
+      .rectangle(STAGE_W / 2, STAGE_H / 2 + 72, 226, 38, 0xf0c451, 1)
       .setStrokeStyle(2, 0x523809)
       .setInteractive({ useHandCursor: true });
 
     const btnLabel = this.add
       .text(
         STAGE_W / 2,
-        STAGE_H / 2 + 70,
+        STAGE_H / 2 + 72,
         won ? '完成挑戰，返回碼頭 ▶' : '重新啟航 ↻',
         {
           fontSize: '15px',
