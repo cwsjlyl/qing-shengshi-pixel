@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { PALACE_TILES_HD_KEY, TILE_HD_PX } from '../art/OriginalArtLoader';
 import { PROMPTS, STAGES, STAGE_NAMES, StageId } from '../data/content';
 import { CHAR_HD_SCALE, toCssSize } from '../gfx/CrispVisuals';
 import {
@@ -12,7 +13,7 @@ import {
   StageMapData,
   buildStageMap
 } from '../maps/stageMaps';
-import { gameState } from '../state/gameState';
+import { ViewZoomPreset, gameState } from '../state/gameState';
 import { HudUI } from '../ui/HudUI';
 import { stopOtherScenes } from './exclusiveScene';
 import { launchMinigameScene } from './lazyMinigames';
@@ -67,6 +68,9 @@ export class ExploreScene extends Phaser.Scene {
 
   private activeTrigger: MapTrigger | null = null;
   private isDepartingCutscene = false;
+  private pinchStartDist = 0;
+  private pinchStartCssZoom = 1.5;
+  private customPinchCssZoom: number | null = null;
 
   constructor() {
     super('ExploreScene');
@@ -86,6 +90,8 @@ export class ExploreScene extends Phaser.Scene {
     this.waterTimer = 0;
     this.npcBadges.clear();
     this.activeTrigger = null;
+    this.pinchStartDist = 0;
+    this.customPinchCssZoom = null;
 
     const stageId = gameState.currentStage;
     const progress = gameState.getStageProgress(stageId);
@@ -97,14 +103,21 @@ export class ExploreScene extends Phaser.Scene {
     this.cameras.main.setRoundPixels(true);
     this.input.setTopOnly(false);
 
-    // 1. 靜態地面與裝飾磚烘焙為 RenderTexture（減少逾 85% WebGL 繪圖呼叫，降低 iPad 發熱）
+    // 1. 採用 48x48 雙倍高清地磚烘焙至 RenderTexture（兼具 4 倍像素銳利度與極低 Draw Calls）
+    const hasHdTiles = this.textures.exists(PALACE_TILES_HD_KEY);
+    const tileTexKey = hasHdTiles ? PALACE_TILES_HD_KEY : 'palace_tiles';
+    const stepPx = hasHdTiles ? TILE_HD_PX : TILE_SIZE;
+    const tileScale = TILE_SIZE / stepPx;
+
     const groundRt = this.add
-      .renderTexture(0, 0, worldW, worldH)
+      .renderTexture(0, 0, this.mapData.cols * stepPx, this.mapData.rows * stepPx)
       .setOrigin(0, 0)
+      .setScale(tileScale)
       .setDepth(1);
     const decoRt = this.add
-      .renderTexture(0, 0, worldW, worldH)
+      .renderTexture(0, 0, this.mapData.cols * stepPx, this.mapData.rows * stepPx)
       .setOrigin(0, 0)
+      .setScale(tileScale)
       .setDepth(5);
     const shadowGraphics = this.add.graphics().setDepth(2);
     shadowGraphics.fillStyle(0x0c0705, 0.24);
@@ -118,25 +131,33 @@ export class ExploreScene extends Phaser.Scene {
     for (let y = 0; y < this.mapData.rows; y++) {
       for (let x = 0; x < this.mapData.cols; x++) {
         const gIdx = this.mapData.ground[y][x];
-        const drawX = x * TILE_SIZE;
-        const drawY = y * TILE_SIZE;
+        const worldDrawX = x * TILE_SIZE;
+        const worldDrawY = y * TILE_SIZE;
+        const rtDrawX = x * stepPx;
+        const rtDrawY = y * stepPx;
 
         if (gIdx === TileIndex.WATER_1) {
           const gImg = this.add
-            .image(drawX + TILE_SIZE / 2, drawY + TILE_SIZE / 2, 'palace_tiles', gIdx)
+            .image(
+              worldDrawX + TILE_SIZE / 2,
+              worldDrawY + TILE_SIZE / 2,
+              tileTexKey,
+              gIdx
+            )
+            .setScale(tileScale)
             .setDepth(1.2);
           this.waterTiles.push(gImg);
         } else {
-          groundRt.batchDrawFrame('palace_tiles', gIdx, drawX, drawY);
+          groundRt.batchDrawFrame(tileTexKey, gIdx, rtDrawX, rtDrawY);
         }
 
         if (this.mapData.shadow[y][x]) {
-          shadowGraphics.fillRect(drawX, drawY, TILE_SIZE, TILE_SIZE);
+          shadowGraphics.fillRect(worldDrawX, worldDrawY, TILE_SIZE, TILE_SIZE);
         }
 
         const dIdx = this.mapData.deco[y][x];
         if (dIdx !== TileIndex.EMPTY && !suppressedDecoCoords.has(`${x},${y}`)) {
-          decoRt.batchDrawFrame('palace_tiles', dIdx, drawX, drawY);
+          decoRt.batchDrawFrame(tileTexKey, dIdx, rtDrawX, rtDrawY);
         }
       }
     }
@@ -146,7 +167,7 @@ export class ExploreScene extends Phaser.Scene {
     // 2. 原創高細節大型立體部件層
     this.renderOriginalMapProps(this.mapData.props || []);
 
-    // 2b. 三朝專屬環境氛圍光暈與動態微粒子（康熙落花、雍正宮燈暖光、乾隆旱塵與柳絮）
+    // 2b. 三朝專屬環境氛圍光暈與動態微粒子
     this.setupDynastyAtmosphere(stageId, worldW, worldH);
 
     // 3. 乾隆關東岸雕龍御船
@@ -192,7 +213,7 @@ export class ExploreScene extends Phaser.Scene {
       });
     }
 
-    // 4. 高清輪廓角色精靈（含自然呼吸律動）、腳下清晰中文名牌與頭頂互動玉牌
+    // 4. 原生全解析度 128x168 角色精靈（含自然呼吸律動）、腳下中文名牌與頭頂互動玉牌
     this.mapData.triggers.forEach((trig, idx) => {
       const tx = trig.tileX * TILE_SIZE + TILE_SIZE / 2;
       const ty = trig.tileY * TILE_SIZE + TILE_SIZE / 2;
@@ -203,14 +224,13 @@ export class ExploreScene extends Phaser.Scene {
 
         const facing = trig.facing || 'down';
         const frame = CHAR_IDLE_FRAME[facing];
-        const baseScale = 1.18 / CHAR_HD_SCALE;
+        const baseScale = 1.22 / CHAR_HD_SCALE;
         const npcSprite = this.add
           .sprite(tx, ty + 2, trig.spriteKey, frame)
           .setOrigin(0.5, 0.92)
           .setScale(baseScale)
           .setDepth(10 + trig.tileY * 0.1);
 
-        // 輕微呼吸起伏微動畫（Game Juice）
         this.tweens.add({
           targets: npcSprite,
           scaleY: baseScale * 1.032,
@@ -256,7 +276,7 @@ export class ExploreScene extends Phaser.Scene {
         const isHighlight = trig.kind === 'minigame' || trig.kind === 'exit';
         this.add
           .text(tx, ty + 6, trig.label, {
-            fontSize: '10px',
+            fontSize: '10.5px',
             color: isHighlight ? '#ffe898' : '#fff9ec',
             backgroundColor: isHighlight
               ? 'rgba(92, 24, 17, 0.88)'
@@ -275,7 +295,7 @@ export class ExploreScene extends Phaser.Scene {
         trig.kind === 'clue' ||
         trig.kind === 'minigame'
       ) {
-        const badgeOffsetY = trig.spriteKey ? -44 : -32;
+        const badgeOffsetY = trig.spriteKey ? -45 : -32;
         const badge = this.add
           .image(tx, ty + badgeOffsetY, 'npc_badge')
           .setDepth(36);
@@ -320,19 +340,28 @@ export class ExploreScene extends Phaser.Scene {
     this.player = this.add
       .sprite(startPx, startPy, 'char_student', CHAR_IDLE_FRAME.up)
       .setOrigin(0.5, 0.92)
-      .setScale(1.18 / CHAR_HD_SCALE)
+      .setScale(1.22 / CHAR_HD_SCALE)
       .setDepth(12);
 
-    // 5b. 雙軌操控：點按地圖地面或遠處人物即可自動前往（Tap-to-Walk）
+    // 5b. 雙軌操控（點地即走）＋ iPad 雙指捏合自由縮放視野
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       const ui = this.registry.get('ui') as HudUI;
       if (ui.isModalOpen || this.isDepartingCutscene) return;
+
+      const p1 = this.input.pointer1;
+      const p2 = this.input.pointer2;
+      if (p1.isDown && p2.isDown) {
+        this.clearWalkTarget();
+        this.pinchStartDist = Phaser.Math.Distance.Between(p1.x, p1.y, p2.x, p2.y);
+        const { dpr } = toCssSize(this.scale.width, this.scale.height);
+        this.pinchStartCssZoom = this.cameras.main.zoom / dpr;
+        return;
+      }
 
       const worldPt = this.cameras.main.getWorldPoint(p.x, p.y);
       const wx = Phaser.Math.Clamp(worldPt.x, 12, worldW - 12);
       const wy = Phaser.Math.Clamp(worldPt.y, 16, worldH - 12);
 
-      // 檢查是否點中某個互動觸發點附近
       let tappedTrig: MapTrigger | null = null;
       let minDist = 30;
       for (const trig of this.mapData.triggers) {
@@ -362,6 +391,52 @@ export class ExploreScene extends Phaser.Scene {
       this.setTapWalkTarget(wx, wy);
     });
 
+    this.input.on('pointermove', () => {
+      const ui = this.registry.get('ui') as HudUI;
+      if (ui.isModalOpen || this.isDepartingCutscene) return;
+      const p1 = this.input.pointer1;
+      const p2 = this.input.pointer2;
+      if (p1.isDown && p2.isDown && this.pinchStartDist > 20) {
+        const dist = Phaser.Math.Distance.Between(p1.x, p1.y, p2.x, p2.y);
+        const ratio = dist / this.pinchStartDist;
+        this.customPinchCssZoom = Phaser.Math.Clamp(
+          this.pinchStartCssZoom * ratio,
+          1.15,
+          2.6
+        );
+        this.applyCameraZoom(this.scale.width, this.scale.height);
+        this.refreshMinimap();
+      }
+    });
+
+    this.input.on('pointerup', () => {
+      if (!this.input.pointer1.isDown || !this.input.pointer2.isDown) {
+        this.pinchStartDist = 0;
+      }
+    });
+
+    this.input.on(
+      'wheel',
+      (
+        _pointer: Phaser.Input.Pointer,
+        _gameObjects: Phaser.GameObjects.GameObject[],
+        _deltaX: number,
+        deltaY: number
+      ) => {
+        const ui = this.registry.get('ui') as HudUI;
+        if (ui.isModalOpen || this.isDepartingCutscene) return;
+        const { dpr } = toCssSize(this.scale.width, this.scale.height);
+        const curCssZoom = this.cameras.main.zoom / dpr;
+        this.customPinchCssZoom = Phaser.Math.Clamp(
+          curCssZoom + (deltaY < 0 ? 0.2 : -0.2),
+          1.15,
+          2.6
+        );
+        this.applyCameraZoom(this.scale.width, this.scale.height);
+        this.refreshMinimap();
+      }
+    );
+
     // 6. 屋簷飛檐前景遮擋層
     const treeCanopySuppression = this.collectTreeCanopySuppressedTiles(
       this.mapData.props || []
@@ -374,12 +449,14 @@ export class ExploreScene extends Phaser.Scene {
           rIdx !== TileIndex.EMPTY &&
           !treeCanopySuppression.has(`${x},${y}`)
         ) {
-          const rImg = this.add.image(
-            x * TILE_SIZE + TILE_SIZE / 2,
-            y * TILE_SIZE + TILE_SIZE / 2,
-            'palace_tiles',
-            rIdx
-          );
+          const rImg = this.add
+            .image(
+              x * TILE_SIZE + TILE_SIZE / 2,
+              y * TILE_SIZE + TILE_SIZE / 2,
+              tileTexKey,
+              rIdx
+            )
+            .setScale(tileScale);
           this.roofContainer.add(rImg);
         }
       }
@@ -397,15 +474,15 @@ export class ExploreScene extends Phaser.Scene {
       .setDepth(45)
       .setVisible(false);
 
-    // 8. Retina 整數倍像素縮放攝影機
+    // 8. iPad 廣角優先攝影機（預設 1.5x CSS Zoom -> 可視範圍擴大 4 倍，看清全院建築與人物）
     const cam = this.cameras.main;
     cam.setBounds(0, 0, worldW, worldH);
-    this.applyCameraIntegerZoom(this.scale.width, this.scale.height);
+    this.applyCameraZoom(this.scale.width, this.scale.height);
     cam.startFollow(this.player, true, 1, 1);
 
     const onResize = (gameSize: Phaser.Structs.Size) => {
       if (!this.isDepartingCutscene) {
-        this.applyCameraIntegerZoom(gameSize.width, gameSize.height);
+        this.applyCameraZoom(gameSize.width, gameSize.height);
       }
     };
     this.scale.on('resize', onResize);
@@ -435,7 +512,7 @@ export class ExploreScene extends Phaser.Scene {
       this.wasd.ENTER.on('down', keyTrigger);
     }
 
-    // 10. 註冊右上角「設定」選單返回處理
+    // 10. 註冊右上角「視野縮放、證據簿、設定」選單處理
     const ui = this.registry.get('ui') as HudUI;
     const savePos = () => {
       if (!this.isDepartingCutscene && this.player) {
@@ -459,6 +536,19 @@ export class ExploreScene extends Phaser.Scene {
           : undefined,
       onResetSave: () => {
         this.scene.start('TitleScene');
+      },
+      onCycleZoom: () => {
+        this.customPinchCssZoom = null;
+        gameState.cycleZoomPreset();
+        this.applyCameraZoom(this.scale.width, this.scale.height);
+        this.refreshMinimap();
+      },
+      onSelectZoomPreset: (preset: ViewZoomPreset) => {
+        this.customPinchCssZoom = null;
+        gameState.zoomPreset = preset;
+        gameState.persist();
+        this.applyCameraZoom(this.scale.width, this.scale.height);
+        this.refreshMinimap();
       }
     });
 
@@ -473,7 +563,6 @@ export class ExploreScene extends Phaser.Scene {
     worldH: number
   ): void {
     if (stageId === 'yongzheng') {
-      // 雍正大殿莊重暖金宮燈光暈
       const glowGfx = this.add.graphics().setDepth(6.2);
       glowGfx.fillStyle(0xffcf6e, 0.09);
       for (const trig of this.mapData.triggers) {
@@ -540,7 +629,6 @@ export class ExploreScene extends Phaser.Scene {
     }
   }
 
-  /** 獲得新史料證據時的飛入閃光與飄字回饋（Game Juice） */
   private playEvidenceCollectedJuice(worldX: number, worldY: number): void {
     const token = this.add
       .image(worldX, worldY - 26, 'npc_badge')
@@ -637,7 +725,7 @@ export class ExploreScene extends Phaser.Scene {
         const baseY = Math.round(p.tileY + 0.2);
         set.add(`${baseX},${baseY}`);
         set.add(`${baseX + 1},${baseY}`);
-      } else if (p.frame.startsWith('tree_cluster_')) {
+      } else if (p.frame.startsWith('tree_')) {
         set.add(`${Math.round(p.tileX)},${Math.round(p.tileY + 0.55)}`);
       }
     }
@@ -653,7 +741,7 @@ export class ExploreScene extends Phaser.Scene {
 
     for (const p of props) {
       if (!tex.has(p.frame)) continue;
-      if (p.frame.startsWith('tree_cluster_')) {
+      if (p.frame.startsWith('tree_')) {
         const tx = Math.round(p.tileX);
         const trunkY = Math.round(p.tileY + 0.55);
         set.add(`${tx},${trunkY - 1}`);
@@ -700,7 +788,7 @@ export class ExploreScene extends Phaser.Scene {
           });
         }
       } else {
-        const isTree = prop.frame.startsWith('tree_cluster_');
+        const isTree = prop.frame.startsWith('tree_');
         img
           .setOrigin(0.5, isTree ? 0.62 : 0.55)
           .setDepth(29 + prop.tileY * 0.02);
@@ -724,11 +812,44 @@ export class ExploreScene extends Phaser.Scene {
     }
   }
 
-  private applyCameraIntegerZoom(gameW: number, gameH: number): void {
+  /**
+   * 針對 iPad 課堂大幅調寬預設視野：
+   * - 預設「廣角（wide）」於 iPad 使用 1.5x CSS Zoom（在 2x Retina 畫布即 3.0 整數物理像素倍率，清晰無鋸齒），
+   *   較舊版 3.0x 擴大整整 4 倍可視地圖面積（一次看清約 28x21 格宮殿庭院與河岸人物）！
+   * - 亦支援「全景 1.25x」、「適中 2.0x」、「近景 2.5x」一鍵切換或雙指捏合微調。
+   */
+  private applyCameraZoom(gameW: number, gameH: number): void {
     const { width: viewW, height: viewH, dpr } = toCssSize(gameW, gameH);
     const minDim = Math.min(viewW, viewH);
-    const cssZoom = minDim >= 680 ? 3 : 2;
-    this.cameras.main.setZoom(cssZoom * dpr);
+    const isTabletOrDesktop = minDim >= 580;
+
+    let cssZoom: number;
+    if (this.customPinchCssZoom !== null) {
+      cssZoom = this.customPinchCssZoom;
+    } else {
+      switch (gameState.zoomPreset) {
+        case 'panoramic':
+          cssZoom = isTabletOrDesktop ? 1.25 : 1.0;
+          break;
+        case 'wide':
+          cssZoom = isTabletOrDesktop ? 1.5 : 1.25;
+          break;
+        case 'standard':
+          cssZoom = isTabletOrDesktop ? 2.0 : 1.5;
+          break;
+        case 'close':
+          cssZoom = isTabletOrDesktop ? 2.5 : 2.0;
+          break;
+      }
+    }
+
+    // 確保攝影機不會超出當前地圖總寬高
+    const worldW = this.mapData.cols * TILE_SIZE;
+    const worldH = this.mapData.rows * TILE_SIZE;
+    const minZoomToCoverBounds = Math.max(viewW / worldW, viewH / worldH);
+    const finalCssZoom = Math.max(minZoomToCoverBounds, cssZoom);
+
+    this.cameras.main.setZoom(finalCssZoom * dpr);
   }
 
   private renderExplorePanel(overrideHint?: string): void {
@@ -805,7 +926,7 @@ export class ExploreScene extends Phaser.Scene {
     ) {
       return '人物證據已收齊！請跟著箭嘴完成本關小遊戲挑戰，再前往出口。';
     }
-    return '可拖曳左下搖桿或「直接點按地面／人物」走過去調查，右上可翻閱「證據簿」。';
+    return '點按地面／人物可自動走過去，右上「🔍 視野」或雙指捏合可自由調整畫面遠近。';
   }
 
   private refreshBadges(): void {
@@ -848,7 +969,6 @@ export class ExploreScene extends Phaser.Scene {
       }
     }
 
-    // 更新三朝環境微粒子
     for (const m of this.ambientMotes) {
       m.dot.x += (m.vx + Math.sin(time * 0.002 + m.phase) * 5) * dt;
       m.dot.y += m.vy * dt;
@@ -874,7 +994,6 @@ export class ExploreScene extends Phaser.Scene {
     if (this.cursors?.up.isDown || this.wasd?.W.isDown) vy = -1;
     else if (this.cursors?.down.isDown || this.wasd?.S.isDown) vy = 1;
 
-    // 若手動操作搖桿或鍵盤，立即取消點地即走目標
     if (Math.hypot(vx, vy) > 0.05) {
       if (this.walkTarget) {
         this.clearWalkTarget();
@@ -1312,7 +1431,6 @@ export class ExploreScene extends Phaser.Scene {
   private onStagePasswordVerified(stageId: StageId): void {
     const ui = this.registry.get('ui') as HudUI;
 
-    // 課堂分關模式：展示「組員互教重點匯報卡（Jigsaw Card）」後返回分關選單，不進入向乾隆進諫
     if (gameState.mode === 'class') {
       gameState.markClassStageCompleted(stageId);
       ui.showJigsawSummaryCard(stageId, () => {
@@ -1321,7 +1439,6 @@ export class ExploreScene extends Phaser.Scene {
       return;
     }
 
-    // 由康熙順序探索模式：完成康熙、雍正、乾隆全部三帝關卡後，才進入向乾隆進諫環節
     if (stageId === 'qianlong' && gameState.shouldEnterQianlongRemonstrance()) {
       gameState.setQianlongEndingPhase('find_qianlong');
       this.refreshBadges();
