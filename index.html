@@ -7,12 +7,93 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
     <title>最後的皇朝：康雍乾盛世</title>
+    <meta
+      name="description"
+      content="香港小學六年級常識科互動像素歷史教育遊戲——探索康熙、雍正、乾隆盛世的文治武功與歷史證據。"
+    />
+    <meta name="keywords" content="康雍乾盛世,清朝歷史,小學常識科,互動教育遊戲,像素遊戲" />
+    <meta name="theme-color" content="#1a100c" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="康雍乾盛世" />
+    <meta property="og:title" content="最後的皇朝：康雍乾盛世" />
+    <meta
+      property="og:description"
+      content="香港小學六年級常識科互動像素課堂教育遊戲，支援 iPad 與行動裝置即開即玩。"
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:locale" content="zh_HK" />
     <link rel="icon" type="image/svg+xml" href="./assets/palace-emblem.svg" />
+    <link rel="apple-touch-icon" href="./assets/ui/school-logo-cst.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <style>
+      #boot-splash {
+        position: absolute;
+        inset: 0;
+        z-index: 15;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        background: #1a100c;
+        pointer-events: none;
+        font-family: 'PingFang HK', 'Microsoft JhengHei', 'Noto Sans TC', sans-serif;
+      }
+      .boot-splash-card {
+        width: min(380px, calc(100vw - 32px));
+        padding: 20px 22px;
+        background: #3b2017;
+        border: 3px solid #e8ba4b;
+        border-radius: 6px;
+        text-align: center;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+      }
+      .boot-splash-title {
+        color: #ffe48a;
+        font-size: 19px;
+        font-weight: 800;
+        margin: 0 0 8px;
+      }
+      .boot-splash-sub {
+        color: #f5efe2;
+        font-size: 13.5px;
+        margin: 0 0 12px;
+      }
+      .boot-splash-bar {
+        width: 100%;
+        height: 8px;
+        background: #22110c;
+        border: 1px solid #9e7b36;
+        overflow: hidden;
+      }
+      .boot-splash-bar-inner {
+        width: 38%;
+        height: 100%;
+        background: #f2c138;
+        animation: bootPulse 1.2s ease-in-out infinite alternate;
+      }
+      @keyframes bootPulse {
+        from {
+          transform: translateX(0%);
+        }
+        to {
+          transform: translateX(160%);
+        }
+      }
+    </style>
   </head>
   <body>
     <div id="app-root">
       <div id="game-stage">
         <div id="game-canvas-host"></div>
+        <div id="boot-splash" aria-live="polite">
+          <div class="boot-splash-card">
+            <p class="boot-splash-title">最後的皇朝：康雍乾盛世</p>
+            <p class="boot-splash-sub">正在連線進入課堂，請稍候（無需重複重新整理）……</p>
+            <div class="boot-splash-bar"><div class="boot-splash-bar-inner"></div></div>
+          </div>
+        </div>
         <div id="hud-overlay"></div>
       </div>
     </div>

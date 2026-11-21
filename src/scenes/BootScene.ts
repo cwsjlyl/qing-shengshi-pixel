@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { detectWebpSupport } from '../art/assetUrl';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -7,6 +8,10 @@ export class BootScene extends Phaser.Scene {
 
   public create(): void {
     this.cameras.main.setBackgroundColor('#1a100c');
-    this.scene.start('PreloadScene');
+    void detectWebpSupport().finally(() => {
+      if (this.sys.isActive()) {
+        this.scene.start('PreloadScene');
+      }
+    });
   }
 }

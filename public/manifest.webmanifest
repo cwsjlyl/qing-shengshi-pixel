@@ -1,0 +1,25 @@
+{
+  "name": "最後的皇朝：康雍乾盛世",
+  "short_name": "康雍乾盛世",
+  "description": "香港小學六年級常識科互動像素課堂教育遊戲：探索康熙、雍正、乾隆三朝歷史與文治武功。",
+  "lang": "zh-HK",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#140c09",
+  "theme_color": "#1a100c",
+  "icons": [
+    {
+      "src": "./assets/palace-emblem.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "./assets/ui/school-logo-cst.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    }
+  ]
+}

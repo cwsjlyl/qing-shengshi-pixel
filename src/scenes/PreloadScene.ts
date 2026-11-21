@@ -1,17 +1,20 @@
 import Phaser from 'phaser';
-import { OriginalArtLoader } from '../art/OriginalArtLoader';
+import { ClassroomAssetPipeline } from '../art/ClassroomAssetPipeline';
 import { TITLE } from '../data/content';
-import { PixelArtGenerator } from '../gfx/PixelArtGenerator';
 import { HudUI } from '../ui/HudUI';
 
 export class PreloadScene extends Phaser.Scene {
   private progressFill?: Phaser.GameObjects.Rectangle;
+  private statusText?: Phaser.GameObjects.Text;
+  private barInnerWidth = 240;
 
   constructor() {
     super('PreloadScene');
   }
 
   public preload(): void {
+    document.getElementById('boot-splash')?.remove();
+
     const ui = this.registry.get('ui') as HudUI;
     ui.clearMainOverlay();
     ui.setNavigationHandlers({});
@@ -36,8 +39,8 @@ export class PreloadScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
-    this.add
-      .text(cx, cy + 4, '正在載入原創清代宮苑與江南像素圖檔……', {
+    this.statusText = this.add
+      .text(cx, cy + 4, '正在載入課堂像素圖集…… 0%', {
         fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
         fontSize: '13.5px',
         color: '#f5efe2'
@@ -45,6 +48,8 @@ export class PreloadScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     const barW = cardW - 56;
+    this.barInnerWidth = barW - 4;
+
     this.add
       .rectangle(cx, cy + 34, barW, 10, 0x22110c, 1)
       .setStrokeStyle(1, 0x9e7b36);
@@ -54,22 +59,31 @@ export class PreloadScene extends Phaser.Scene {
       .setOrigin(0, 0.5);
 
     this.load.on('progress', (val: number) => {
-      if (this.progressFill) {
-        this.progressFill.width = Math.max(4, Math.floor((barW - 4) * val));
-      }
+      const pct = Math.round(val * 80);
+      this.updateProgressUI(val * 0.8, `正在載入課堂像素圖集…… ${pct}%`);
     });
 
-    // 載入 public/assets/ 下四張原創 PNG 圖集與角色表
-    OriginalArtLoader.preloadAssets(this);
+    // 載入原創圖集與角色表（優先使用無損 WebP 並支援 PNG 斷線保底重試）
+    ClassroomAssetPipeline.preloadAssets(this);
   }
 
   public create(): void {
-    // 1. 先建立基底保底貼圖，確保所有既有鍵值齊備
-    PixelArtGenerator.generateAll(this);
+    void ClassroomAssetPipeline.buildAllTexturesStaged(this, (ratio, status) => {
+      this.updateProgressUI(ratio, status);
+    }).then(() => {
+      if (this.sys.isActive()) {
+        this.scene.start('TitleScene');
+      }
+    });
+  }
 
-    // 2. 將已載入的原創 PNG 去棋盤格、內縮避格線，覆寫為高細節圖塊表、立體建築物件與五類角色四向動畫
-    OriginalArtLoader.buildAllFromLoadedAssets(this);
-
-    this.scene.start('TitleScene');
+  private updateProgressUI(ratio: number, status: string): void {
+    const clamped = Math.max(0, Math.min(1, ratio));
+    if (this.progressFill) {
+      this.progressFill.width = Math.max(4, Math.floor(this.barInnerWidth * clamped));
+    }
+    if (this.statusText) {
+      this.statusText.setText(status);
+    }
   }
 }
