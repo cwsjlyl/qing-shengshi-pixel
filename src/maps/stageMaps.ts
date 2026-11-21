@@ -1,6 +1,7 @@
 import { ExtraTileIndex } from '../art/OriginalArtLoader';
 import { StageId } from '../data/content';
 import { TileIndex } from '../gfx/PixelArtGenerator';
+
 export interface MapTrigger {
   id: string;
   kind: 'npc' | 'clue' | 'minigame' | 'exit' | 'decor_note';
@@ -13,6 +14,7 @@ export interface MapTrigger {
   sceneKey?: string;
   decorMessage?: string;
 }
+
 export interface ZoneRect {
   name: string;
   x1: number;
@@ -20,6 +22,7 @@ export interface ZoneRect {
   x2: number;
   y2: number;
 }
+
 export interface MapPropPlacement {
   frame: string;
   tileX: number;
@@ -31,6 +34,7 @@ export interface MapPropPlacement {
   scale?: number;
   alpha?: number;
 }
+
 export interface StageMapData {
   cols: number;
   rows: number;
@@ -46,9 +50,7 @@ export interface StageMapData {
   zones: ZoneRect[];
   boatPosition?: { tileX: number; tileY: number };
 }
-// =========================================================================
-// 各類地面嚴格維持同家族無縫連續圖塊，絕不跨家族混拼，確保已修好的地面不變
-// =========================================================================
+
 const BRICK_VARIANTS = [
   TileIndex.COURTYARD_BRICK_A,
   TileIndex.COURTYARD_BRICK_B,
@@ -57,19 +59,23 @@ const BRICK_VARIANTS = [
   ExtraTileIndex.COURTYARD_BRICK_E,
   ExtraTileIndex.COURTYARD_BRICK_F
 ];
+
 const MARBLE_VARIANTS = [
   TileIndex.MARBLE_PATH_A,
   TileIndex.MARBLE_PATH_B,
   ExtraTileIndex.MARBLE_PATH_C,
   ExtraTileIndex.MARBLE_PATH_D
 ];
+
 const MARBLE_SET = new Set<number>([
   ...MARBLE_VARIANTS,
   TileIndex.MARBLE_STAIR,
   TileIndex.MARBLE_DRAGON_CARVING,
   ExtraTileIndex.CARVED_MEDALLION_STONE
 ]);
+
 const MARBLE_SLAB_ONLY_SET = new Set<number>(MARBLE_VARIANTS);
+
 const GRASS_VARIANTS = [
   TileIndex.GRASS_A,
   TileIndex.GRASS_B,
@@ -84,6 +90,7 @@ const GRASS_VARIANTS = [
   TileIndex.GRASS_A,
   TileIndex.GRASS_FLOWER
 ];
+
 const GRASS_SET = new Set<number>([
   TileIndex.GRASS_A,
   TileIndex.GRASS_B,
@@ -92,56 +99,67 @@ const GRASS_SET = new Set<number>([
   ExtraTileIndex.GRASS_E,
   TileIndex.GRASS_FLOWER
 ]);
+
 const HALL_FLOOR_VARIANTS = [
   TileIndex.HALL_GOLD_BRICK_A,
   TileIndex.HALL_GOLD_BRICK_B,
   ExtraTileIndex.HALL_GOLD_BRICK_C,
   ExtraTileIndex.HALL_GOLD_BRICK_D
 ];
+
 const DIRT_PATH_VARIANTS = [
   TileIndex.DIRT_PATH_A,
   TileIndex.DIRT_PATH_B,
   ExtraTileIndex.DIRT_PATH_C,
   ExtraTileIndex.DIRT_PATH_D
 ];
+
 const SAND_VARIANTS = [
   TileIndex.SAND_A,
   TileIndex.SAND_B,
   ExtraTileIndex.SAND_C,
   ExtraTileIndex.SAND_D
 ];
+
 const FARMLAND_VARIANTS = [
   TileIndex.DRY_FARMLAND_A,
   TileIndex.DRY_FARMLAND_B,
   ExtraTileIndex.DRY_FARMLAND_C,
   ExtraTileIndex.DRY_FARMLAND_D
 ];
+
 const FARMLAND_SET = new Set<number>(FARMLAND_VARIANTS);
+
 const STONE_PAVING_VARIANTS = [
   TileIndex.STONE_PAVING,
   ExtraTileIndex.STONE_PAVING_B,
   ExtraTileIndex.STONE_PAVING_C
 ];
+
 const HARD_PAVING_OR_EARTH_SET = new Set<number>([
   ...BRICK_VARIANTS,
   ...DIRT_PATH_VARIANTS,
   ...SAND_VARIANTS,
   ...STONE_PAVING_VARIANTS
 ]);
+
 const BRICK_OR_EARTH_FOR_MARBLE_EDGE = new Set<number>([
   ...BRICK_VARIANTS,
   ...DIRT_PATH_VARIANTS
 ]);
+
 const WOOD_PIER_VARIANTS = [
   TileIndex.WOOD_PIER,
   ExtraTileIndex.WOOD_PIER_B,
   ExtraTileIndex.WOOD_PIER_C,
   ExtraTileIndex.WOOD_PIER_D
 ];
+
 const PALACE_WINDOW_VARIANTS = [
   TileIndex.PALACE_WINDOW,
   ExtraTileIndex.PALACE_WINDOW_B
 ];
+
 const WALL_FOOT_CASTERS = new Set<number>([
   TileIndex.RED_WALL_BASE,
   TileIndex.RED_WALL_MID,
@@ -149,20 +167,24 @@ const WALL_FOOT_CASTERS = new Set<number>([
   ExtraTileIndex.PALACE_WINDOW_B,
   TileIndex.TERRACE_BASE
 ]);
+
 const TREE_CANOPY_FRAMES = [
   'tree_cluster_a',
   'tree_cluster_b',
   'tree_cluster_c',
   'tree_cluster_d'
 ] as const;
+
 function createGrid<T>(cols: number, rows: number, fill: T): T[][] {
   return Array.from({ length: rows }, () => Array<T>(cols).fill(fill));
 }
+
 function tileHash(x: number, y: number): number {
   let h = (x * 374761393 + y * 668265263) | 0;
   h = ((h ^ (h >>> 13)) * 1274126177) | 0;
   return (h ^ (h >>> 16)) >>> 0;
 }
+
 function fillRect<T>(
   grid: T[][],
   x1: number,
@@ -179,6 +201,7 @@ function fillRect<T>(
     }
   }
 }
+
 function fillVariedGround(
   ground: number[][],
   x1: number,
@@ -195,6 +218,7 @@ function fillVariedGround(
     }
   }
 }
+
 function placePerimeterWall(
   deco: number[][],
   solid: boolean[][],
@@ -218,9 +242,7 @@ function placePerimeterWall(
     solid[y][x2] = true;
   }
 }
-/**
- * 立體宮殿主立面：配搭斗拱彩畫額枋、飛簷翹角、轉角抱柱與高對比朱紅廊柱，消除矩形積木感
- */
+
 function buildPalaceFacade(
   deco: number[][],
   solid: boolean[][],
@@ -257,7 +279,6 @@ function buildPalaceFacade(
     offsetY: -4,
     layer: 'canopy'
   });
-  // 簷下斗拱彩畫額枋與兩端上翹飛簷角、轉角抱柱
   for (let dx = x1 + 1.5; dx <= x2 - 1.5; dx += 4) {
     props.push({
       frame: 'palace_dougong_span',
@@ -343,6 +364,7 @@ function buildPalaceFacade(
     );
   }
 }
+
 function carveOpening(
   deco: number[][],
   solid: boolean[][],
@@ -354,9 +376,7 @@ function carveOpening(
   fillRect(deco, x1, y1, x2, y2, TileIndex.EMPTY);
   fillRect(solid, x1, y1, x2, y2, false);
 }
-/**
- * 在紅牆門洞兩側貼上朱紅抱框門柱、漢白玉抱鼓石與飛簷挑角，消除紅牆開口垂直刀切感
- */
+
 function frameWallGatewayH(
   props: MapPropPlacement[],
   openX1: number,
@@ -395,9 +415,7 @@ function frameWallGatewayH(
     );
   }
 }
-/**
- * 放置大樹：根部只鋪柔和橢圓樹蔭格（TREE_BASE_SHADOW），絕不更動 ground[][]，確保樹下無方形泥塊
- */
+
 function placePineTree(
   deco: number[][],
   solid: boolean[][],
@@ -422,6 +440,7 @@ function placePineTree(
     flipX: tileHash(ty, tx) % 2 === 1
   });
 }
+
 function placeWillowTree(
   deco: number[][],
   solid: boolean[][],
@@ -436,8 +455,7 @@ function placeWillowTree(
   if (ty - 1 >= 0) {
     roof[ty - 1][tx] = ExtraTileIndex.INVISIBLE_ROOF_MARKER;
   }
-  const treeFrame =
-    TREE_CANOPY_FRAMES[(tileHash(tx, ty) + 2) % TREE_CANOPY_FRAMES.length];
+  const treeFrame = tileHash(tx, ty) % 2 === 0 ? 'tree_cluster_b' : 'tree_cluster_c';
   props.push({
     frame: treeFrame,
     tileX: tx,
@@ -446,6 +464,53 @@ function placeWillowTree(
     flipX: tileHash(tx + 3, ty) % 2 === 0
   });
 }
+
+/** 參照上傳素材第一排粉紅花樹（#06/#07）放置御苑海棠／桃花樹 */
+function placeBlossomTree(
+  deco: number[][],
+  solid: boolean[][],
+  roof: number[][],
+  props: MapPropPlacement[],
+  tx: number,
+  ty: number
+): void {
+  deco[ty][tx] = ExtraTileIndex.TREE_BASE_SHADOW;
+  solid[ty][tx] = true;
+  if (ty - 1 >= 0) {
+    roof[ty - 1][tx] = ExtraTileIndex.INVISIBLE_ROOF_MARKER;
+  }
+  props.push({
+    frame: tileHash(tx, ty) % 2 === 0 ? 'tree_blossom_a' : 'tree_blossom_b',
+    tileX: tx,
+    tileY: ty - 0.55,
+    layer: 'canopy',
+    flipX: tileHash(ty, tx) % 2 === 1
+  });
+}
+
+/** 參照上傳素材第一排金秋黃葉樹（#08/#09）放置邊塞／旱區金黃林木 */
+function placeAutumnTree(
+  deco: number[][],
+  solid: boolean[][],
+  roof: number[][],
+  props: MapPropPlacement[],
+  tx: number,
+  ty: number
+): void {
+  deco[ty][tx] = ExtraTileIndex.TREE_BASE_SHADOW;
+  solid[ty][tx] = true;
+  if (ty - 1 >= 0) {
+    roof[ty - 1][tx] = ExtraTileIndex.INVISIBLE_ROOF_MARKER;
+  }
+  props.push({
+    frame: tileHash(tx, ty) % 2 === 0 ? 'tree_autumn_a' : 'tree_autumn_b',
+    tileX: tx,
+    tileY: ty - 0.55,
+    layer: 'canopy',
+    flipX: tileHash(tx, ty + 5) % 2 === 0
+  });
+}
+
 function placeStoneLantern(
   deco: number[][],
   solid: boolean[][],
@@ -462,9 +527,7 @@ function placeStoneLantern(
     layer: 'building'
   });
 }
-/**
- * 不改動任何底層 ground[][] 圖塊，自動在米白御道邊緣、宮牆牆腳、草地泥路交界與旱田外緣疊加自然過渡層
- */
+
 function softenGroundTransitions(
   ground: number[][],
   deco: number[][],
@@ -473,14 +536,12 @@ function softenGroundTransitions(
 ): void {
   const rows = ground.length;
   const cols = ground[0].length;
-  // 1. 縱向交界（每 2 格一段 48px 軟邊條，精準對齊 x + 0.5 接縫）
   for (let x = 1; x < cols - 1; x++) {
     for (let y = 1; y < rows - 2; y += 2) {
       const a0 = ground[y][x];
       const b0 = ground[y][x + 1];
       const a1 = ground[y + 1][x];
       const b1 = ground[y + 1][x + 1];
-      // 漢白玉御道 <-> 青灰磚／黃土路：碎石、青苔與石緣微影
       if (
         !solid[y][x] &&
         !solid[y][x + 1] &&
@@ -510,7 +571,6 @@ function softenGroundTransitions(
           layer: 'ground_decor'
         });
       }
-      // 草地 <-> 泥路／沙地／石板／青磚：自然蔓延草穗邊
       if (
         !solid[y][x] &&
         !solid[y][x + 1] &&
@@ -540,7 +600,6 @@ function softenGroundTransitions(
           layer: 'ground_decor'
         });
       }
-      // 旱田縱向蜿蜒泥草田埂
       if (
         (FARMLAND_SET.has(a0) && FARMLAND_SET.has(a1) && !FARMLAND_SET.has(b0)) ||
         (FARMLAND_SET.has(b0) && FARMLAND_SET.has(b1) && !FARMLAND_SET.has(a0))
@@ -554,14 +613,12 @@ function softenGroundTransitions(
       }
     }
   }
-  // 2. 橫向交界與紅牆／台基牆腳青苔碎石帶（每 2 格一段 48px，精準對齊 y + 0.5 接縫）
   for (let y = 1; y < rows - 1; y++) {
     for (let x = 1; x < cols - 2; x += 2) {
       const t0 = ground[y][x];
       const t1 = ground[y][x + 1];
       const b0 = ground[y + 1][x];
       const b1 = ground[y + 1][x + 1];
-      // 宮牆／須彌座牆腳與南側可行走地面交界 -> 青苔、碎石與漸層陰影
       if (
         WALL_FOOT_CASTERS.has(deco[y][x]) &&
         WALL_FOOT_CASTERS.has(deco[y][x + 1]) &&
@@ -630,7 +687,6 @@ function softenGroundTransitions(
           });
         }
       }
-      // 旱田橫向蜿蜒泥草田埂
       if (
         (FARMLAND_SET.has(t0) && FARMLAND_SET.has(t1) && !FARMLAND_SET.has(b0)) ||
         (FARMLAND_SET.has(b0) && FARMLAND_SET.has(b1) && !FARMLAND_SET.has(t0))
@@ -645,9 +701,7 @@ function softenGroundTransitions(
     }
   }
 }
-/**
- * 僅在牆體正南側投射柔和屋簷陰影，避開漢白玉台階與門洞側邊御道
- */
+
 function computeWallShadows(
   ground: number[][],
   deco: number[][],
@@ -685,6 +739,7 @@ function computeWallShadows(
     }
   }
 }
+
 export function buildStageMap(stage: StageId): StageMapData {
   switch (stage) {
     case 'kangxi':
@@ -695,6 +750,7 @@ export function buildStageMap(stage: StageId): StageMapData {
       return buildQianlongMap();
   }
 }
+
 function buildKangxiMap(): StageMapData {
   const cols = 48;
   const rows = 36;
@@ -704,20 +760,25 @@ function buildKangxiMap(): StageMapData {
   const solid = createGrid(cols, rows, false);
   const roof = createGrid<number>(cols, rows, TileIndex.EMPTY);
   const props: MapPropPlacement[] = [];
-  // 1. 全院鋪設同家族連續青灰磚，左右外庭配純淨綠草花圃
+
   fillVariedGround(ground, 0, 0, cols - 1, rows - 1, BRICK_VARIANTS);
   fillVariedGround(ground, 2, 27, 9, 33, GRASS_VARIANTS);
   fillVariedGround(ground, 38, 27, 45, 33, GRASS_VARIANTS);
-  // 2. 紫禁紅牆外框與南面宮門出口（加立體門柱抱鼓石與飛簷挑角）
+
   placePerimeterWall(deco, solid, 0, 0, cols - 1, rows - 1);
   deco[rows - 1][22] = TileIndex.GATE_DOOR_LEFT;
   deco[rows - 1][23] = TileIndex.GATE_DOOR_RIGHT;
   deco[rows - 1][24] = TileIndex.GATE_DOOR_LEFT;
   deco[rows - 1][25] = TileIndex.GATE_DOOR_RIGHT;
   frameWallGatewayH(props, 22, 25, rows - 1, true);
-  // 3. 南段外庭全幅連續米白漢白玉御道（本體保持純淨連續，邊緣交由 softenGroundTransitions 柔化）
+
+  // 中軸漢白玉御道鑲嵌雲龍丹陛石雕（呼應上傳紫禁城圖）
   fillVariedGround(ground, 21, 25, 26, 34, MARBLE_VARIANTS);
-  // 4. 外庭與內苑分隔紅牆（門洞加朱紅抱框門柱、抱鼓石、斗拱額枋與牆角花灌木）
+  for (const ry of [27, 30, 32]) {
+    ground[ry][23] = TileIndex.MARBLE_DRAGON_CARVING;
+    ground[ry][24] = ExtraTileIndex.CARVED_MEDALLION_STONE;
+  }
+
   for (let x = 1; x <= 46; x++) {
     const winTile =
       PALACE_WINDOW_VARIANTS[tileHash(x, 25) % PALACE_WINDOW_VARIANTS.length];
@@ -742,7 +803,7 @@ function buildKangxiMap(): StageMapData {
     { frame: 'jiangnan_shrub_a', tileX: 11.2, tileY: 25.45, layer: 'building' },
     { frame: 'jiangnan_shrub_b', tileX: 35.2, tileY: 25.45, layer: 'building' }
   );
-  // 5. 蓮池御苑純淨草地與荷池（池角與岸邊加菖蒲水草與奇石，柔化水岸直角）
+
   fillVariedGround(ground, 1, 14, 32, 24, GRASS_VARIANTS);
   fillRect(ground, 4, 15, 30, 23, TileIndex.WATER_1);
   fillRect(ground, 4, 15, 30, 15, TileIndex.WATER_BANK_TOP);
@@ -768,7 +829,7 @@ function buildKangxiMap(): StageMapData {
     { frame: 'pond_reeds_a', tileX: 27.1, tileY: 22.8, layer: 'building' },
     { frame: 'pond_reeds_b', tileX: 29.8, tileY: 18.6, layer: 'building' }
   );
-  // 6. 中央漢白玉石拱橋
+
   fillRect(ground, 22, 14, 25, 24, TileIndex.STONE_BRIDGE_DECK);
   fillRect(solid, 22, 14, 25, 24, false);
   for (let y = 15; y <= 23; y++) {
@@ -777,7 +838,7 @@ function buildKangxiMap(): StageMapData {
     deco[y][26] = TileIndex.MARBLE_BALUSTRADE_V;
     solid[y][26] = true;
   }
-  // 7. 湖心水榭亭島與西向石橋（加立體朱紅廊柱與飛簷翹角，保留用人唯才挑戰桌）
+
   fillVariedGround(ground, 9, 17, 15, 21, MARBLE_VARIANTS);
   fillRect(solid, 9, 17, 15, 21, false);
   fillRect(ground, 16, 18, 21, 20, TileIndex.STONE_BRIDGE_DECK);
@@ -797,9 +858,11 @@ function buildKangxiMap(): StageMapData {
   );
   deco[18][12] = TileIndex.MINIGAME_TABLE;
   solid[18][12] = true;
-  // 8. 北面太和殿前連續漢白玉高台與重簷金頂主殿
+
   fillVariedGround(ground, 16, 6, 31, 10, MARBLE_VARIANTS);
   fillVariedGround(ground, 22, 11, 25, 13, MARBLE_VARIANTS);
+  ground[11][23] = TileIndex.MARBLE_DRAGON_CARVING;
+  ground[11][24] = ExtraTileIndex.CARVED_MEDALLION_STONE;
   for (let x = 16; x <= 31; x++) {
     if (x >= 22 && x <= 25) {
       ground[10][x] = TileIndex.MARBLE_STAIR;
@@ -818,7 +881,7 @@ function buildKangxiMap(): StageMapData {
   deco[7][28] = TileIndex.BRONZE_INCENSE;
   solid[7][19] = true;
   solid[7][28] = true;
-  // 9. 東側滿漢書院與江南書齋（以雅致書齋變體 jiangnan_house_b 搭配灌木與踏步石柔化輪廓）
+
   for (let y = 1; y <= 24; y++) {
     const winTile =
       PALACE_WINDOW_VARIANTS[tileHash(33, y) % PALACE_WINDOW_VARIANTS.length];
@@ -853,18 +916,21 @@ function buildKangxiMap(): StageMapData {
   deco[17][38] = TileIndex.TAIHU_ROCK;
   solid[9][42] = true;
   solid[17][38] = true;
-  // 10. 乾淨去背大樹與精雕石燈
+
+  // 蒼松與御苑粉紅花樹交織（呼應上傳素材上排多樹種）
   for (const [px, py] of [
     [5, 6],
-    [11, 6],
-    [6, 30],
-    [41, 30],
+    [13, 6],
     [38, 8]
   ]) {
     placePineTree(deco, solid, roof, shadow, props, px, py);
   }
+  placeBlossomTree(deco, solid, roof, props, 6, 30);
+  placeBlossomTree(deco, solid, roof, props, 41, 30);
+  placeBlossomTree(deco, solid, roof, props, 9, 6);
   placeWillowTree(deco, solid, roof, shadow, props, 5, 14);
   placeWillowTree(deco, solid, roof, shadow, props, 29, 14);
+
   for (const [lx, ly] of [
     [20, 12],
     [27, 12],
@@ -875,6 +941,7 @@ function buildKangxiMap(): StageMapData {
   }
   softenGroundTransitions(ground, deco, solid, props);
   computeWallShadows(ground, deco, solid, shadow);
+
   return {
     cols,
     rows,
@@ -939,6 +1006,7 @@ function buildKangxiMap(): StageMapData {
     ]
   };
 }
+
 function buildYongzhengMap(): StageMapData {
   const cols = 48;
   const rows = 36;
@@ -948,12 +1016,12 @@ function buildYongzhengMap(): StageMapData {
   const solid = createGrid(cols, rows, false);
   const roof = createGrid<number>(cols, rows, TileIndex.EMPTY);
   const props: MapPropPlacement[] = [];
-  // 1. 全院同家族連續青灰磚與北苑綠植區
+
   fillVariedGround(ground, 0, 0, cols - 1, rows - 1, BRICK_VARIANTS);
   fillVariedGround(ground, 2, 2, 11, 5, GRASS_VARIANTS);
   fillVariedGround(ground, 36, 2, 45, 5, GRASS_VARIANTS);
   placePerimeterWall(deco, solid, 0, 0, cols - 1, rows - 1);
-  // 2. 北面城門（真正出口）加飛簷挑角與抱鼓門柱
+
   deco[0][22] = TileIndex.GATE_DOOR_LEFT;
   deco[0][23] = TileIndex.GATE_DOOR_RIGHT;
   deco[0][24] = TileIndex.GATE_DOOR_LEFT;
@@ -969,9 +1037,11 @@ function buildYongzhengMap(): StageMapData {
   fillRect(solid, 26, 1, 31, 2, true);
   frameWallGatewayH(props, 22, 25, 2, false);
   fillVariedGround(ground, 22, 1, 25, 12, MARBLE_VARIANTS);
+  ground[6][23] = TileIndex.MARBLE_DRAGON_CARVING;
+  ground[6][24] = ExtraTileIndex.CARVED_MEDALLION_STONE;
   placeStoneLantern(deco, solid, props, 20, 4);
   placeStoneLantern(deco, solid, props, 27, 4);
-  // 3. 南面圓拱月洞門（以圓弧漢白玉月洞門＋捲棚琉璃披簷＋兩側花木取代原本 4 格方正綠塊）
+
   for (let x = 22; x <= 25; x++) {
     deco[rows - 1][x] = TileIndex.MOON_GATE;
     solid[rows - 1][x] = true;
@@ -982,13 +1052,17 @@ function buildYongzhengMap(): StageMapData {
     { frame: 'jiangnan_shrub_b', tileX: 26.4, tileY: 34.4, layer: 'building' }
   );
   fillVariedGround(ground, 18, 25, 29, 34, MARBLE_VARIANTS);
+  for (const ry of [26, 29, 32]) {
+    ground[ry][23] = TileIndex.MARBLE_DRAGON_CARVING;
+    ground[ry][24] = ExtraTileIndex.CARVED_MEDALLION_STONE;
+  }
   deco[27][19] = TileIndex.BRONZE_INCENSE;
   deco[27][28] = TileIndex.BRONZE_INCENSE;
   solid[27][19] = true;
   solid[27][28] = true;
   placeStoneLantern(deco, solid, props, 17, 29);
   placeStoneLantern(deco, solid, props, 30, 29);
-  // 4. 勤政大殿：加強殿內外高對比立體朱紅廊柱、挑出斗拱、飛簷翹角與轉角抱柱
+
   placePerimeterWall(deco, solid, 14, 12, 33, 24);
   for (let x = 14; x <= 33; x++) {
     const isWin = x === 16 || x === 19 || x === 28 || x === 31;
@@ -1007,7 +1081,7 @@ function buildYongzhengMap(): StageMapData {
   fillRect(roof, 22, 11, 25, 11, TileIndex.EMPTY);
   carveOpening(deco, solid, 14, 17, 14, 20);
   carveOpening(deco, solid, 33, 17, 33, 20);
-  // 大殿屋頂、翼樓、斗拱額枋與飛簷翹角
+
   props.push(
     { frame: 'palace_grand_roof', tileX: 23.5, tileY: 11.8, layer: 'canopy' },
     { frame: 'palace_eave_cap_l', tileX: 13.85, tileY: 11.6, layer: 'canopy' },
@@ -1022,18 +1096,16 @@ function buildYongzhengMap(): StageMapData {
     { frame: 'palace_dougong_span', tileX: 19.6, tileY: 23.95, layer: 'building' },
     { frame: 'palace_dougong_span', tileX: 27.4, tileY: 23.95, layer: 'building' },
     { frame: 'palace_dougong_span', tileX: 30.8, tileY: 23.95, layer: 'building' },
-    // 前立面外廊立體朱紅柱與轉角抱柱（位於原本即不可通行的 y=24 牆線上，完全不擋丹墀與台階）
     { frame: 'palace_corner_pilaster', tileX: 14, tileY: 23.9, layer: 'building' },
     { frame: 'palace_corner_pilaster', tileX: 33, tileY: 23.9, flipX: true, layer: 'building' },
     { frame: 'palace_pillar_a', tileX: 15.2, tileY: 23.85, layer: 'building' },
     { frame: 'palace_pillar_b', tileX: 21.25, tileY: 23.85, layer: 'building' },
     { frame: 'palace_pillar_b', tileX: 25.75, tileY: 23.85, flipX: true, layer: 'building' },
     { frame: 'palace_pillar_a', tileX: 31.8, tileY: 23.85, flipX: true, layer: 'building' },
-    // 北門洞抱框門柱
     { frame: 'palace_door_jamb_l', tileX: 21.65, tileY: 11.9, layer: 'building' },
     { frame: 'palace_door_jamb_r', tileX: 25.35, tileY: 11.9, layer: 'building' }
   );
-  // 殿內四根高對比盤金／朱紅大殿柱
+
   for (const [px, py] of [
     [18, 15],
     [18, 21],
@@ -1058,7 +1130,7 @@ function buildYongzhengMap(): StageMapData {
   deco[14][24] = TileIndex.EMPEROR_THRONE_DESK;
   solid[14][23] = true;
   solid[14][24] = true;
-  // 5. 西翼長廊與戶部國庫（加轉角抱柱、飛簷翹角與牆隅花木）
+
   placePerimeterWall(deco, solid, 3, 7, 14, 29);
   fillVariedGround(ground, 4, 8, 13, 28, HALL_FLOOR_VARIANTS);
   carveOpening(deco, solid, 14, 17, 14, 20);
@@ -1088,7 +1160,7 @@ function buildYongzhengMap(): StageMapData {
     solid[cy][cx] = true;
   }
   props.push({ frame: 'camp_crate', tileX: 5.5, tileY: 23.2, layer: 'building' });
-  // 6. 東翼長廊與打擊貪官挑戰桌（加轉角抱柱、飛簷翹角與牆隅花木）
+
   placePerimeterWall(deco, solid, 33, 7, 44, 29);
   fillVariedGround(ground, 34, 8, 43, 28, HALL_FLOOR_VARIANTS);
   carveOpening(deco, solid, 33, 17, 33, 20);
@@ -1109,12 +1181,17 @@ function buildYongzhengMap(): StageMapData {
   fillRect(solid, 34, 21, 39, 21, true);
   deco[11][39] = TileIndex.MINIGAME_TABLE;
   solid[11][39] = true;
+
   placePineTree(deco, solid, roof, shadow, props, 7, 4);
   placePineTree(deco, solid, roof, shadow, props, 40, 4);
   placePineTree(deco, solid, roof, shadow, props, 9, 32);
   placePineTree(deco, solid, roof, shadow, props, 38, 32);
+  placeBlossomTree(deco, solid, roof, props, 14, 4);
+  placeBlossomTree(deco, solid, roof, props, 33, 4);
+
   softenGroundTransitions(ground, deco, solid, props);
   computeWallShadows(ground, deco, solid, shadow);
+
   return {
     cols,
     rows,
@@ -1195,6 +1272,7 @@ function buildYongzhengMap(): StageMapData {
     ]
   };
 }
+
 function buildQianlongMap(): StageMapData {
   const cols = 54;
   const rows = 38;
@@ -1204,7 +1282,7 @@ function buildQianlongMap(): StageMapData {
   const solid = createGrid(cols, rows, false);
   const roof = createGrid<number>(cols, rows, TileIndex.EMPTY);
   const props: MapPropPlacement[] = [];
-  // 1. 全境鋪設純淨無縫江南綠草地（無泥塊碎斑）
+
   fillVariedGround(ground, 0, 0, cols - 1, rows - 1, GRASS_VARIANTS);
   for (let x = 0; x < cols; x++) {
     if (x < 43) {
@@ -1218,12 +1296,21 @@ function buildQianlongMap(): StageMapData {
     solid[y][0] = true;
     solid[y][cols - 1] = true;
   }
-  // 2. 東側與南側碧海河灣（配岸石與菖蒲水草柔化河岸邊界）
+
   fillRect(ground, 43, 1, 53, 37, TileIndex.WATER_1);
   fillRect(solid, 43, 1, 53, 37, true);
   fillRect(ground, 22, 33, 53, 37, TileIndex.WATER_1);
   fillRect(ground, 22, 33, 42, 33, TileIndex.WATER_BANK_TOP);
   fillRect(solid, 22, 33, 53, 37, true);
+  for (const [lx, ly] of [
+    [45, 8],
+    [47, 10],
+    [27, 35],
+    [33, 35]
+  ]) {
+    ground[ly][lx] = TileIndex.LOTUS_FLOWER;
+    ground[ly][lx + 1] = TileIndex.LOTUS_LEAF;
+  }
   props.push(
     { frame: 'jiangnan_rocks_a', tileX: 24.5, tileY: 33.2, layer: 'ground_decor' },
     { frame: 'jiangnan_rocks_b', tileX: 34.5, tileY: 33.2, layer: 'ground_decor' },
@@ -1234,54 +1321,28 @@ function buildQianlongMap(): StageMapData {
     { frame: 'pond_reeds_a', tileX: 43.2, tileY: 7.5, layer: 'building' },
     { frame: 'pond_reeds_b', tileX: 43.2, tileY: 31.2, layer: 'building' }
   );
-  // 3. 江南沿岸青石板路與自然不規則鄉村小屋（配側廂披簷、門前踏步石、竹籬笆、屋角灌木與旁側綠樹遮擋硬角）
+
+  // 江南沿岸青石板路與白牆黛瓦民居聚落（呼應上傳江南水鄉圖）
   fillVariedGround(ground, 39, 4, 42, 32, STONE_PAVING_VARIANTS);
   fillRect(solid, 39, 4, 42, 32, false);
   fillVariedGround(ground, 22, 30, 42, 32, STONE_PAVING_VARIANTS);
   fillRect(solid, 22, 30, 42, 32, false);
   fillRect(solid, 35, 19, 38, 20, true);
   fillRect(roof, 35, 19, 38, 19, ExtraTileIndex.INVISIBLE_ROOF_MARKER);
+  fillRect(solid, 34, 23, 37, 24, true);
+  fillRect(roof, 34, 23, 37, 23, ExtraTileIndex.INVISIBLE_ROOF_MARKER);
   props.push(
-    {
-      frame: 'jiangnan_white_house',
-      tileX: 36.75,
-      tileY: 19.3,
-      layer: 'building'
-    },
-    {
-      frame: 'cottage_stepping_stones',
-      tileX: 36.4,
-      tileY: 20.9,
-      layer: 'ground_decor'
-    },
-    {
-      frame: 'rustic_bamboo_fence',
-      tileX: 33.8,
-      tileY: 20.35,
-      layer: 'building'
-    },
-    {
-      frame: 'jiangnan_shrub_a',
-      tileX: 34.7,
-      tileY: 20.3,
-      layer: 'building'
-    },
-    {
-      frame: 'jiangnan_shrub_b',
-      tileX: 38.75,
-      tileY: 20.35,
-      layer: 'building'
-    },
-    {
-      frame: 'jiangnan_shrub_a',
-      tileX: 38.6,
-      tileY: 18.55,
-      layer: 'building'
-    }
+    { frame: 'jiangnan_white_house', tileX: 36.75, tileY: 19.3, layer: 'building' },
+    { frame: 'jiangnan_house_b', tileX: 35.75, tileY: 23.3, layer: 'building' },
+    { frame: 'cottage_stepping_stones', tileX: 36.4, tileY: 20.9, layer: 'ground_decor' },
+    { frame: 'cottage_stepping_stones', tileX: 35.4, tileY: 24.9, layer: 'ground_decor' },
+    { frame: 'rustic_bamboo_fence', tileX: 33.8, tileY: 20.35, layer: 'building' },
+    { frame: 'jiangnan_shrub_a', tileX: 34.7, tileY: 20.3, layer: 'building' },
+    { frame: 'jiangnan_shrub_b', tileX: 38.75, tileY: 20.35, layer: 'building' },
+    { frame: 'jiangnan_shrub_a', tileX: 38.6, tileY: 18.55, layer: 'building' }
   );
-  // 屋後左上角種植江南綠柳，樹冠自然微遮屋脊左角，徹底打破整齊方盒輪廓
   placeWillowTree(deco, solid, roof, shadow, props, 34, 19);
-  // 4. 東岸護欄、連續木棧橋碼頭與南巡護航木船
+
   for (let y = 6; y <= 30; y += 3) {
     if (y < 19 || y > 23) {
       deco[y][42] = TileIndex.MARBLE_BALUSTRADE_V;
@@ -1297,7 +1358,6 @@ function buildQianlongMap(): StageMapData {
     { frame: 'pier_boat_h', tileX: 46.2, tileY: 16.4, layer: 'building' },
     { frame: 'pier_boat_h', tileX: 45.8, tileY: 25.4, flipX: true, layer: 'building' },
     { frame: 'pier_boat_v', tileX: 44.2, tileY: 28.8, layer: 'building' },
-    // Extra escort fleet (do not cover pier walkway 42–48,20–22 or boarding boat)
     { frame: 'pier_boat_h', tileX: 48.6, tileY: 14.6, scale: 0.92, layer: 'building' },
     { frame: 'pier_boat_h', tileX: 49.2, tileY: 27.2, flipX: true, scale: 0.9, layer: 'building' },
     { frame: 'pier_boat_v', tileX: 47.4, tileY: 30.6, scale: 0.95, layer: 'building' },
@@ -1305,7 +1365,7 @@ function buildQianlongMap(): StageMapData {
     { frame: 'pier_boat_v', tileX: 51.4, tileY: 28.4, scale: 0.88, layer: 'building' },
     { frame: 'pier_boat_h', tileX: 48.2, tileY: 31.4, scale: 0.86, layer: 'building' }
   );
-  // 六下江南挑戰牌坊加立體飛簷頂蓋，消除平頂方柱感
+
   deco[28][36] = TileIndex.TOUR_ARCHWAY_L;
   deco[28][37] = TileIndex.TOUR_ARCHWAY_R;
   deco[28][38] = TileIndex.MINIGAME_TABLE;
@@ -1317,7 +1377,8 @@ function buildQianlongMap(): StageMapData {
     { frame: 'palace_pillar_b', tileX: 37, tileY: 27.85, flipX: true, layer: 'building' },
     { frame: 'palace_side_roof', tileX: 36.5, tileY: 26.9, layer: 'canopy' }
   );
-  // 5. 西北區：準噶爾平亂校場軍營（純淨無縫黃沙地，外角略作自然內縮避免生硬大方塊）
+
+  // 西北區：準噶爾平亂校場軍營（加入上傳素材之捆紮原木堆與營火柴堆）
   fillVariedGround(ground, 2, 2, 19, 15, SAND_VARIANTS);
   fillVariedGround(ground, 19, 14, 19, 15, GRASS_VARIANTS);
   for (const [tx, ty] of [
@@ -1337,7 +1398,9 @@ function buildQianlongMap(): StageMapData {
     { frame: 'camp_cannon', tileX: 13, tileY: 12, layer: 'building' },
     { frame: 'camp_palisade', tileX: 4.5, tileY: 14.8, layer: 'building' },
     { frame: 'camp_palisade', tileX: 15.5, tileY: 14.8, layer: 'building' },
-    { frame: 'camp_crate', tileX: 7, tileY: 4.2, layer: 'building' }
+    { frame: 'camp_crate', tileX: 7, tileY: 4.2, layer: 'building' },
+    { frame: 'camp_logs', tileX: 12.2, tileY: 3.8, layer: 'building' },
+    { frame: 'camp_firewood', tileX: 7.4, tileY: 7.5, layer: 'building' }
   );
   solid[12][13] = true;
   deco[10][8] = TileIndex.WEAPON_RACK;
@@ -1352,14 +1415,16 @@ function buildQianlongMap(): StageMapData {
   solid[5][18] = true;
   deco[6][15] = TileIndex.MINIGAME_TABLE;
   solid[6][15] = true;
-  // 6. 中北區：乾隆御駕行宮高台
+
   fillVariedGround(ground, 22, 6, 30, 13, MARBLE_VARIANTS);
+  ground[10][25] = TileIndex.MARBLE_DRAGON_CARVING;
+  ground[10][26] = ExtraTileIndex.CARVED_MEDALLION_STONE;
   buildPalaceFacade(deco, solid, roof, props, 22, 2, 30, 25);
   deco[7][23] = TileIndex.BRONZE_INCENSE;
   deco[7][29] = TileIndex.BRONZE_INCENSE;
   solid[7][23] = true;
   solid[7][29] = true;
-  // 7. 東北內院：和珅府邸（加轉角抱柱、飛簷翹角、門洞抱鼓石與院外灌木，消除紅磚方框感）
+
   placePerimeterWall(deco, solid, 32, 5, 38, 13);
   fillVariedGround(ground, 33, 6, 37, 12, HALL_FLOOR_VARIANTS);
   carveOpening(deco, solid, 34, 13, 36, 13);
@@ -1379,9 +1444,8 @@ function buildQianlongMap(): StageMapData {
   solid[7][34] = true;
   solid[7][36] = true;
   solid[8][33] = true;
-  // 8. 西南區旱田與純淨無縫黃土幹道（削去旱田外圍死板直角並配竹籬與灌木，田埂由 softenGroundTransitions 自動鋪設）
+
   fillVariedGround(ground, 3, 20, 21, 34, FARMLAND_VARIANTS);
-  // 讓農田四角略呈自然不規則階梯，不再是完美長方形切塊
   fillVariedGround(ground, 3, 20, 4, 20, GRASS_VARIANTS);
   fillVariedGround(ground, 20, 20, 21, 21, GRASS_VARIANTS);
   fillVariedGround(ground, 3, 34, 5, 34, GRASS_VARIANTS);
@@ -1396,21 +1460,25 @@ function buildQianlongMap(): StageMapData {
     { frame: 'jiangnan_shrub_a', tileX: 18.6, tileY: 19.75, layer: 'building' },
     { frame: 'rustic_bamboo_fence', tileX: 16.5, tileY: 34.35, layer: 'building' }
   );
-  // 9. 無方框乾淨去背江南林木點綴
+
+  // 東岸江南翠柳、御苑花樹與西南旱區金秋黃葉樹對比呈現
   for (const [wx, wy] of [
     [38, 15],
     [38, 25],
     [31, 29],
-    [23, 29],
-    [29, 21],
-    [21, 15]
+    [29, 21]
   ]) {
     placeWillowTree(deco, solid, roof, shadow, props, wx, wy);
   }
-  placePineTree(deco, solid, roof, shadow, props, 2, 18);
+  placeBlossomTree(deco, solid, roof, props, 41, 8);
+  placeAutumnTree(deco, solid, roof, props, 2, 18);
+  placeAutumnTree(deco, solid, roof, props, 21, 15);
+  placeAutumnTree(deco, solid, roof, props, 22, 29);
   placePineTree(deco, solid, roof, shadow, props, 31, 15);
+
   softenGroundTransitions(ground, deco, solid, props);
   computeWallShadows(ground, deco, solid, shadow);
+
   return {
     cols,
     rows,

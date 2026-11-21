@@ -2,7 +2,9 @@ import Phaser from 'phaser';
 import {
   ExtraTileIndex,
   HD_PROPS_ATLAS_KEY,
-  PropStampFrame
+  PALACE_TILES_HD_KEY,
+  PropStampFrame,
+  TILE_HD_PX
 } from '../art/OriginalArtLoader';
 import { STAGE_NAMES, TITLE, StageId } from '../data/content';
 import { CHAR_HD_SCALE, toCssSize } from '../gfx/CrispVisuals';
@@ -13,9 +15,10 @@ import { stopOtherScenes } from './exclusiveScene';
 
 const SCENE_W = 576;
 
-const FOCAL_W = 356;
-const FOCAL_TOP_Y = 8;
-const FOCAL_BOTTOM_Y = 274;
+// 放寬主頁對焦寬度至完整宮苑全景 548px，讓 iPad 橫向螢幕完整看見東西兩翼宮殿與花木
+const FOCAL_W = 548;
+const FOCAL_TOP_Y = 6;
+const FOCAL_BOTTOM_Y = 276;
 const FOCAL_H = FOCAL_BOTTOM_Y - FOCAL_TOP_Y;
 const FOCAL_CENTER_Y = Math.round((FOCAL_TOP_Y + FOCAL_BOTTOM_Y) / 2);
 
@@ -73,7 +76,6 @@ export class TitleScene extends Phaser.Scene {
     sky.fillStyle(0x9ec2db, 1);
     sky.fillRect(-960, 166, SCENE_W + 1920, 34);
 
-    // 祥雲緩緩飄動
     this.clouds = [];
     for (let i = 0; i < 7; i++) {
       const c = this.add
@@ -89,10 +91,16 @@ export class TitleScene extends Phaser.Scene {
       this.clouds.push(c);
     }
 
-    // 2. 廣闊宮苑地面（烘焙為單張 RenderTexture 減輕繪圖呼叫）
+    // 2. 廣闊宮苑地面（採用 48x48 雙倍高清地磚烘焙至 RenderTexture）
+    const hasHdTiles = this.textures.exists(PALACE_TILES_HD_KEY);
+    const tileTexKey = hasHdTiles ? PALACE_TILES_HD_KEY : 'palace_tiles';
+    const stepPx = hasHdTiles ? TILE_HD_PX : TILE_SIZE;
+    const rtScale = TILE_SIZE / stepPx;
+
     const groundRt = this.add
-      .renderTexture(-18 * TILE_SIZE, 8 * TILE_SIZE, 60 * TILE_SIZE, 26 * TILE_SIZE)
+      .renderTexture(-18 * TILE_SIZE, 8 * TILE_SIZE, 60 * stepPx, 26 * stepPx)
       .setOrigin(0, 0)
+      .setScale(rtScale)
       .setDepth(2);
     groundRt.beginDraw();
     for (let r = 8; r <= 33; r++) {
@@ -115,10 +123,10 @@ export class TitleScene extends Phaser.Scene {
             COURTYARD_BRICK_VARIANTS[h % COURTYARD_BRICK_VARIANTS.length];
         }
         groundRt.batchDrawFrame(
-          'palace_tiles',
+          tileTexKey,
           tileFrame,
-          (c + 18) * TILE_SIZE,
-          (r - 8) * TILE_SIZE
+          (c + 18) * stepPx,
+          (r - 8) * stepPx
         );
       }
     }
@@ -131,7 +139,7 @@ export class TitleScene extends Phaser.Scene {
     shadowGfx.fillStyle(0x0d0907, 0.18);
     shadowGfx.fillRect(176, 134, 224, 10);
 
-    // 4. 立體紅牆黃瓦宮殿建築群
+    // 4. 立體紅牆黃瓦宮殿建築群與蒼松花樹
     const hasHdProps = this.textures.exists(HD_PROPS_ATLAS_KEY);
 
     if (hasHdProps) {
@@ -159,7 +167,8 @@ export class TitleScene extends Phaser.Scene {
       for (let c = 8; c <= 15; c++) {
         const px = c * TILE_SIZE + TILE_SIZE / 2;
         this.add
-          .image(px, 148, 'palace_tiles', TileIndex.RED_WALL_FRIEZE)
+          .image(px, 148, tileTexKey, TileIndex.RED_WALL_FRIEZE)
+          .setScale(rtScale)
           .setDepth(7);
 
         let lowerWallFrame: number = TileIndex.RED_WALL_BASE;
@@ -170,7 +179,8 @@ export class TitleScene extends Phaser.Scene {
           lowerWallFrame = ExtraTileIndex.PALACE_WINDOW_B;
 
         this.add
-          .image(px, 172, 'palace_tiles', lowerWallFrame)
+          .image(px, 172, tileTexKey, lowerWallFrame)
+          .setScale(rtScale)
           .setDepth(7);
       }
 
@@ -187,11 +197,13 @@ export class TitleScene extends Phaser.Scene {
         if (c >= 10 && c <= 13) continue;
         const px = c * TILE_SIZE + TILE_SIZE / 2;
         this.add
-          .image(px, 194, 'palace_tiles', TileIndex.TERRACE_BASE)
+          .image(px, 194, tileTexKey, TileIndex.TERRACE_BASE)
+          .setScale(rtScale)
           .setDepth(8);
         if (c >= 4 && c <= 19 && c % 2 === 0) {
           this.add
-            .image(px, 188, 'palace_tiles', TileIndex.MARBLE_BALUSTRADE_H)
+            .image(px, 188, tileTexKey, TileIndex.MARBLE_BALUSTRADE_H)
+            .setScale(rtScale)
             .setDepth(9);
         }
       }
@@ -202,30 +214,33 @@ export class TitleScene extends Phaser.Scene {
         .image(
           SCENE_W / 2,
           198,
-          'palace_tiles',
+          tileTexKey,
           TileIndex.MARBLE_DRAGON_CARVING
         )
+        .setScale(rtScale)
         .setDepth(9);
 
       addProp(222, 228, 'stone_lantern_a', 13);
       addProp(354, 228, 'stone_lantern_b', 13);
       this.add
-        .image(196, 206, 'palace_tiles', TileIndex.BRONZE_INCENSE)
+        .image(196, 206, tileTexKey, TileIndex.BRONZE_INCENSE)
+        .setScale(rtScale)
         .setDepth(12);
       this.add
-        .image(380, 206, 'palace_tiles', TileIndex.BRONZE_INCENSE)
+        .image(380, 206, tileTexKey, TileIndex.BRONZE_INCENSE)
+        .setScale(rtScale)
         .setDepth(12);
 
       shadowGfx.fillStyle(0x0d0907, 0.24);
       shadowGfx.fillEllipse(142, 212, 46, 14);
       shadowGfx.fillEllipse(434, 212, 46, 14);
-      shadowGfx.fillEllipse(28, 228, 48, 14);
-      shadowGfx.fillEllipse(548, 228, 48, 14);
+      shadowGfx.fillEllipse(42, 228, 48, 14);
+      shadowGfx.fillEllipse(534, 228, 48, 14);
 
       addProp(142, 178, 'tree_cluster_a', 12);
       addProp(434, 178, 'tree_cluster_b', 12);
-      addProp(28, 194, 'tree_cluster_c', 12);
-      addProp(548, 194, 'tree_cluster_d', 12);
+      addProp(42, 194, 'tree_blossom_a', 12);
+      addProp(534, 194, 'tree_blossom_b', 12);
     } else {
       for (let c = 5; c <= 18; c++) {
         const px = c * TILE_SIZE + TILE_SIZE / 2;
@@ -238,7 +253,7 @@ export class TitleScene extends Phaser.Scene {
 
     const ui = this.registry.get('ui') as HudUI;
 
-    // 5. 殿前漢白玉御道上的康、雍、乾三朝皇帝
+    // 5. 殿前漢白玉御道上的康、雍、乾三朝皇帝（全解析度像素角色）
     const emperorY = 250;
     const emperors: Array<{
       id: StageId;
@@ -246,9 +261,9 @@ export class TitleScene extends Phaser.Scene {
       shortName: string;
       x: number;
     }> = [
-      { id: 'kangxi', key: 'char_kangxi_emperor', shortName: '康熙', x: SCENE_W / 2 - 64 },
+      { id: 'kangxi', key: 'char_kangxi_emperor', shortName: '康熙', x: SCENE_W / 2 - 68 },
       { id: 'yongzheng', key: 'char_yongzheng_emperor', shortName: '雍正', x: SCENE_W / 2 },
-      { id: 'qianlong', key: 'char_qianlong_emperor', shortName: '乾隆', x: SCENE_W / 2 + 64 }
+      { id: 'qianlong', key: 'char_qianlong_emperor', shortName: '乾隆', x: SCENE_W / 2 + 68 }
     ];
 
     const enterClassroomStage = (stageId: StageId) => {
@@ -268,7 +283,7 @@ export class TitleScene extends Phaser.Scene {
       const spr = this.add
         .sprite(emp.x, emperorY, emp.key, CHAR_IDLE_FRAME.down)
         .setOrigin(0.5, 0.92)
-        .setScale(1.2 / CHAR_HD_SCALE)
+        .setScale(1.22 / CHAR_HD_SCALE)
         .setDepth(16);
       spr.play(`${emp.key}_down`);
 
@@ -340,10 +355,8 @@ export class TitleScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(26);
 
-    // 7. 渲染標題選單（支援繼續上次存檔與直接向乾隆進諫）
     this.openTitleMenu();
 
-    // 8. 依據裝置方向與選單實際高度動態對齊視窗
     const onResize = (gameSize: Phaser.Structs.Size) => {
       this.syncViewportAndTitleDock(gameSize.width, gameSize.height);
     };
@@ -468,9 +481,10 @@ export class TitleScene extends Phaser.Scene {
     );
     const availH = safeBottom - safeTop;
 
-    const zoomByW = Math.floor(viewW / FOCAL_W);
-    const zoomByH = Math.floor(availH / FOCAL_H);
-    const cssZoom = Math.max(1, Math.min(3, Math.min(zoomByW, zoomByH)));
+    // 支援 0.5 階梯廣角縮放（如 1.5 * dpr(2) = 3.0 整數物理像素），讓 iPad 完整呈現宮苑全景而不裁切兩翼
+    const rawZoom = Math.min(viewW / FOCAL_W, availH / FOCAL_H);
+    const snappedZoom = Math.floor(rawZoom * 2) / 2;
+    const cssZoom = Math.max(1, Math.min(2, snappedZoom >= 1 ? snappedZoom : rawZoom));
 
     const safeCenterScreenY = (safeTop + safeBottom) / 2;
     const camWorldY = Math.round(
