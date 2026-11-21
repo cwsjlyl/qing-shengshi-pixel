@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { CHAR_HD_SCALE, toCssSize } from '../gfx/CrispVisuals';
 import { CHAR_IDLE_FRAME, TILE_SIZE, TileIndex } from '../gfx/PixelArtGenerator';
-import { gameState } from '../state/gameState';
+import { MEDAL_LABELS, MedalRank, gameState } from '../state/gameState';
 import { HudUI } from '../ui/HudUI';
 import { clearStaleTitleOrOpeningHud, stopOtherScenes } from '../scenes/exclusiveScene';
 
@@ -28,6 +28,7 @@ export class WhackMinigame extends Phaser.Scene {
   private cells: WindowCell[] = [];
   private hits = 0;
   private mistakes = 0;
+  private combo = 0;
   private timeLeft = ROUND_SECONDS;
   private isEnded = false;
   private hudText!: Phaser.GameObjects.Text;
@@ -42,6 +43,7 @@ export class WhackMinigame extends Phaser.Scene {
     this.cells = [];
     this.hits = 0;
     this.mistakes = 0;
+    this.combo = 0;
     this.timeLeft = ROUND_SECONDS;
     this.isEnded = false;
 
@@ -80,7 +82,7 @@ export class WhackMinigame extends Phaser.Scene {
 
     this.hudText = this.add
       .text(STAGE_W / 2, 28, '', {
-        fontSize: '15px',
+        fontSize: '14px',
         color: '#ffe89e',
         fontStyle: 'bold',
         stroke: '#260b06',
@@ -168,7 +170,7 @@ export class WhackMinigame extends Phaser.Scene {
     ui.renderMinigamePanel({
       title: '打擊貪官挑戰（雍正朝）',
       instruction:
-        '請只點按紅色標籤「貪官」（目標 8 次），切勿誤傷綠色「清官」或藍色「百姓」！',
+        '請只點按紅色標籤「貪官」（目標 8 次；零誤傷可獲御賜金印），切勿誤傷清官或百姓！',
       onRetry: () => this.scene.restart(),
       onLeave: () => this.scene.start('ExploreScene')
     });
@@ -185,8 +187,9 @@ export class WhackMinigame extends Phaser.Scene {
   }
 
   private refreshTopBar(): void {
+    const comboStr = this.combo >= 2 ? `　｜　🔥${this.combo}連擊` : '';
     this.hudText.setText(
-      `已懲貪官：${this.hits} / ${TARGET_HITS}　｜　誤傷：${this.mistakes} / ${MAX_MISTAKES}　｜　時間：${this.timeLeft}秒`
+      `已懲貪官：${this.hits}/${TARGET_HITS}　｜　誤傷：${this.mistakes}/${MAX_MISTAKES}　｜　${this.timeLeft}秒${comboStr}`
     );
   }
 
@@ -248,17 +251,28 @@ export class WhackMinigame extends Phaser.Scene {
 
     if (hitRole === 'corrupt') {
       this.hits++;
-      this.showFloatingMark(cell.x, cell.y - 10, '嚴懲貪官 +1', '#98ffd0');
+      this.combo++;
+      const mark =
+        this.combo >= 3 ? `明察秋毫 ${this.combo} 連擊！` : '嚴懲貪官 +1';
+      this.showFloatingMark(cell.x, cell.y - 10, mark, '#98ffd0');
       this.refreshTopBar();
 
       if (this.hits >= TARGET_HITS) {
+        const medal: MedalRank =
+          this.mistakes === 0 && this.timeLeft >= 6
+            ? 'gold'
+            : this.mistakes <= 1
+              ? 'silver'
+              : 'bronze';
         this.finishGame(
           true,
-          '挑戰成功！\n雍正「嚴懲貪官、嚴查虧空」\n追回銀兩充實國庫，朝廷吏治清明！'
+          `挑戰成功！【${MEDAL_LABELS[medal]}】\n雍正「嚴懲貪官、嚴查虧空」\n追回銀兩充實國庫，朝廷吏治清明！`,
+          medal
         );
       }
     } else {
       this.mistakes++;
+      this.combo = 0;
       this.cameras.main.shake(180, 0.009);
       this.showFloatingMark(cell.x, cell.y - 10, '誤傷好人！', '#ff9e99');
       this.refreshTopBar();
@@ -301,16 +315,16 @@ export class WhackMinigame extends Phaser.Scene {
     });
   }
 
-  private finishGame(won: boolean, message: string): void {
+  private finishGame(won: boolean, message: string, medal: MedalRank = 'silver'): void {
     this.isEnded = true;
     this.spawnTimer?.remove(false);
     this.clockTimer?.remove(false);
 
     const ui = this.registry.get('ui') as HudUI;
     if (won) {
-      gameState.markMinigameCompleted('whack_game', 'yongzheng');
+      gameState.markMinigameCompleted('whack_game', 'yongzheng', medal);
       ui.updateMinigameStatus(
-        '<span style="color:#98ffd0;font-weight:800;">✓ 已完成「打擊貪官挑戰」！呼應雍正嚴懲貪官、嚴查虧空。</span>'
+        `<span style="color:#98ffd0;font-weight:800;">✓ 獲得【${MEDAL_LABELS[medal]}】！呼應雍正嚴懲貪官、嚴查虧空。</span>`
       );
     } else {
       ui.updateMinigameStatus(
@@ -323,16 +337,16 @@ export class WhackMinigame extends Phaser.Scene {
       .rectangle(
         STAGE_W / 2,
         STAGE_H / 2,
-        428,
-        178,
+        436,
+        186,
         won ? 0x1e4a38 : 0x5c1914,
         0.97
       )
       .setStrokeStyle(3, 0xf2c749);
 
     const txt = this.add
-      .text(STAGE_W / 2, STAGE_H / 2 - 24, message, {
-        fontSize: '16px',
+      .text(STAGE_W / 2, STAGE_H / 2 - 26, message, {
+        fontSize: '15.5px',
         color: '#fff8e7',
         fontStyle: 'bold',
         align: 'center',
@@ -343,14 +357,14 @@ export class WhackMinigame extends Phaser.Scene {
       .setOrigin(0.5);
 
     const btn = this.add
-      .rectangle(STAGE_W / 2, STAGE_H / 2 + 54, 220, 40, 0xf0c451, 1)
+      .rectangle(STAGE_W / 2, STAGE_H / 2 + 56, 220, 40, 0xf0c451, 1)
       .setStrokeStyle(2, 0x523809)
       .setInteractive({ useHandCursor: true });
 
     const btnText = this.add
       .text(
         STAGE_W / 2,
-        STAGE_H / 2 + 54,
+        STAGE_H / 2 + 56,
         won ? '完成挑戰，返回大殿 ▶' : '再試一次 ↻',
         {
           fontSize: '15px',

@@ -3,6 +3,8 @@ import Phaser from 'phaser';
 /** 角色精靈圖高解析放大倍率（雙重 EPX 邊緣重建：1x -> 4x） */
 export const CHAR_HD_SCALE = 4;
 
+const HD_CHAR_CACHE_NAME = 'qing-hd-chars-v1';
+
 const CRISP_FONT_STACK =
   '"PingFang HK", "Heiti TC", "Apple LiGothic", "Noto Sans TC", "Microsoft JhengHei", sans-serif';
 
@@ -22,17 +24,11 @@ const CHARACTER_TEXTURE_KEYS = [
 
 let crispTextPatched = false;
 
-/**
- * 取得畫布硬體像素倍率（iPad / Retina 螢幕啟用 2x 實體解析度，上限鎖定 2 兼顧 35 機流暢度）
- */
 export function getCanvasDpr(): number {
   const raw = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
   return Math.min(2, Math.max(1, raw));
 }
 
-/**
- * 將 Phaser 畫布實體像素尺寸換算回 CSS 邏輯視窗尺寸，供版面與選單對齊計算使用
- */
 export function toCssSize(
   gameWidth: number,
   gameHeight: number
@@ -45,12 +41,6 @@ export function toCssSize(
   };
 }
 
-/**
- * 徹底解決 pixelArt:true 下繁體中文字筆畫鋸齒與黏連問題：
- * 1. 所有 Phaser Text 以 4x 高解析度繪製向量字型
- * 2. 強制 Text 獨立貼圖維持 LINEAR 平滑取樣（包含動態 setText 更新後）
- * 3. 自動補齊上下內距，防止繁體字高筆畫（如「慶、懲、疆、廳」）被裁切
- */
 export function installCrispChineseTextPatch(): void {
   if (crispTextPatched) return;
   crispTextPatched = true;
@@ -115,9 +105,6 @@ function blendOpaque(p1: number, p2: number): number {
   return packPixel(r, g, b, 255);
 }
 
-/**
- * 清理人物邊緣半透明殘影並微幅提升五官／服飾細節銳利度
- */
 function cleanAndSharpenFrame1x(src: Uint32Array, w: number, h: number): Uint32Array {
   const cleaned = new Uint32Array(w * h);
   for (let i = 0; i < src.length; i++) {
@@ -173,9 +160,6 @@ function cleanAndSharpenFrame1x(src: Uint32Array, w: number, h: number): Uint32A
   return out;
 }
 
-/**
- * 單次 EPX / Scale2x 邊緣導向無模糊放大（消除五官、官帽與衣袍斜線鋸齒）
- */
 function epxScale2x(src: Uint32Array, w: number, h: number): Uint32Array {
   const dstW = w * 2;
   const dstH = h * 2;
@@ -217,9 +201,6 @@ function epxScale2x(src: Uint32Array, w: number, h: number): Uint32Array {
   return dst;
 }
 
-/**
- * 於 4x 高解析畫格為缺乏深色描邊的淺色衣袍／臉部補上細緻深墨外輪廓，讓人物在宮磚與漢白玉背景上立體醒目
- */
 function applyAdaptiveSilhouetteOutline(buf: Uint32Array, w: number, h: number): Uint32Array {
   const out = new Uint32Array(buf);
   const outlineColor = packPixel(28, 16, 11, 232);
@@ -259,10 +240,126 @@ function applyAdaptiveSilhouetteOutline(buf: Uint32Array, w: number, h: number):
   return out;
 }
 
+function registerHdCharSheetAndAnims(
+  scene: Phaser.Scene,
+  key: string,
+  source: HTMLImageElement | HTMLCanvasElement,
+  fw4: number,
+  fh4: number
+): void {
+  scene.textures.remove(key);
+  const hdSheet = scene.textures.addSpriteSheet(key, source as HTMLImageElement, {
+    frameWidth: fw4,
+    frameHeight: fh4
+  });
+  if (!hdSheet) return;
+  hdSheet.setFilter(Phaser.Textures.FilterMode.NEAREST);
+
+  (['down', 'left', 'right', 'up'] as const).forEach((dName, rowIdx) => {
+    const animKey = `${key}_${dName}`;
+    if (scene.anims.exists(animKey)) {
+      scene.anims.remove(animKey);
+    }
+    scene.anims.create({
+      key: animKey,
+      frames: [
+        { key, frame: rowIdx * 4 + 0 },
+        { key, frame: rowIdx * 4 + 1 },
+        { key, frame: rowIdx * 4 + 2 },
+        { key, frame: rowIdx * 4 + 3 }
+      ],
+      frameRate: 8,
+      repeat: -1
+    });
+  });
+}
+
+function loadImageFromBlob(blob: Blob): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(img);
+    };
+    img.onerror = (err) => {
+      URL.revokeObjectURL(url);
+      reject(err);
+    };
+    img.src = url;
+  });
+}
+
+function buildSingleCharacterHdCanvas(
+  srcImg: HTMLImageElement | HTMLCanvasElement,
+  fw: number,
+  fh: number
+): HTMLCanvasElement | null {
+  const cols = 4;
+  const rows = 4;
+  const srcCanvas = document.createElement('canvas');
+  srcCanvas.width = fw * cols;
+  srcCanvas.height = fh * rows;
+  const srcCtx = srcCanvas.getContext('2d');
+  if (!srcCtx) return null;
+  srcCtx.imageSmoothingEnabled = false;
+  srcCtx.drawImage(srcImg, 0, 0);
+
+  const fw4 = fw * CHAR_HD_SCALE;
+  const fh4 = fh * CHAR_HD_SCALE;
+  const dstCanvas = document.createElement('canvas');
+  dstCanvas.width = fw4 * cols;
+  dstCanvas.height = fh4 * rows;
+  const dstCtx = dstCanvas.getContext('2d');
+  if (!dstCtx) return null;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const frameImg = srcCtx.getImageData(c * fw, r * fh, fw, fh);
+      const packed1x = new Uint32Array(fw * fh);
+      const raw = frameImg.data;
+      for (let i = 0; i < packed1x.length; i++) {
+        const bi = i * 4;
+        packed1x[i] = packPixel(raw[bi], raw[bi + 1], raw[bi + 2], raw[bi + 3]);
+      }
+
+      const sharp1x = cleanAndSharpenFrame1x(packed1x, fw, fh);
+      const up2x = epxScale2x(sharp1x, fw, fh);
+      const up4x = epxScale2x(up2x, fw * 2, fh * 2);
+      const outlined4x = applyAdaptiveSilhouetteOutline(up4x, fw4, fh4);
+
+      const outImgData = dstCtx.createImageData(fw4, fh4);
+      const outBytes = outImgData.data;
+      for (let i = 0; i < outlined4x.length; i++) {
+        const p = outlined4x[i];
+        const bi = i * 4;
+        outBytes[bi] = (p >>> 16) & 0xff;
+        outBytes[bi + 1] = (p >>> 8) & 0xff;
+        outBytes[bi + 2] = p & 0xff;
+        outBytes[bi + 3] = (p >>> 24) & 0xff;
+      }
+      dstCtx.putImageData(outImgData, c * fw4, r * fh4);
+    }
+  }
+  return dstCanvas;
+}
+
 /**
- * 將全數 11 組角色精靈圖升級為 4x 高密度輪廓強化貼圖，並重建四向動畫索引
+ * 支援 CacheStorage 持久化快取的 4x 高清角色貼圖升級：
+ * 首次開啟時執行 EPX 放大並於背景寫入快取；課堂二次重開或重新整理時直接零運算毫秒級讀取。
  */
-export function enhanceAllCharacterTextures(scene: Phaser.Scene): void {
+export async function enhanceAllCharacterTexturesCached(
+  scene: Phaser.Scene
+): Promise<void> {
+  let cache: Cache | null = null;
+  if (typeof window !== 'undefined' && 'caches' in window) {
+    try {
+      cache = await window.caches.open(HD_CHAR_CACHE_NAME);
+    } catch {
+      cache = null;
+    }
+  }
+
   for (const key of CHARACTER_TEXTURE_KEYS) {
     if (!scene.textures.exists(key)) continue;
     const tex = scene.textures.get(key);
@@ -271,85 +368,48 @@ export function enhanceAllCharacterTextures(scene: Phaser.Scene): void {
 
     const fw = frame0.width;
     const fh = frame0.height;
-    if (fw <= 0 || fh <= 0 || fw >= 120) {
-      // 已升級過則不重複處理
-      continue;
+    if (fw <= 0 || fh <= 0 || fw >= 120) continue;
+
+    const fw4 = fw * CHAR_HD_SCALE;
+    const fh4 = fh * CHAR_HD_SCALE;
+    const cacheUrl = `./__baked_hd_char__/${key}_${fw4}x${fh4}.png`;
+
+    if (cache) {
+      try {
+        const hit = await cache.match(cacheUrl);
+        if (hit) {
+          const blob = await hit.blob();
+          const cachedImg = await loadImageFromBlob(blob);
+          registerHdCharSheetAndAnims(scene, key, cachedImg, fw4, fh4);
+          continue;
+        }
+      } catch {
+        // Fall back to fresh computation
+      }
     }
 
     const srcImg = tex.getSourceImage() as HTMLImageElement | HTMLCanvasElement;
     if (!srcImg) continue;
+    const dstCanvas = buildSingleCharacterHdCanvas(srcImg, fw, fh);
+    if (!dstCanvas) continue;
 
-    const cols = 4;
-    const rows = 4;
-    const srcCanvas = document.createElement('canvas');
-    srcCanvas.width = fw * cols;
-    srcCanvas.height = fh * rows;
-    const srcCtx = srcCanvas.getContext('2d');
-    if (!srcCtx) continue;
-    srcCtx.imageSmoothingEnabled = false;
-    srcCtx.drawImage(srcImg, 0, 0);
+    registerHdCharSheetAndAnims(scene, key, dstCanvas, fw4, fh4);
 
-    const fw4 = fw * CHAR_HD_SCALE;
-    const fh4 = fh * CHAR_HD_SCALE;
-    const dstCanvas = document.createElement('canvas');
-    dstCanvas.width = fw4 * cols;
-    dstCanvas.height = fh4 * rows;
-    const dstCtx = dstCanvas.getContext('2d');
-    if (!dstCtx) continue;
-
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const frameImg = srcCtx.getImageData(c * fw, r * fh, fw, fh);
-        const packed1x = new Uint32Array(fw * fh);
-        const raw = frameImg.data;
-        for (let i = 0; i < packed1x.length; i++) {
-          const bi = i * 4;
-          packed1x[i] = packPixel(raw[bi], raw[bi + 1], raw[bi + 2], raw[bi + 3]);
-        }
-
-        const sharp1x = cleanAndSharpenFrame1x(packed1x, fw, fh);
-        const up2x = epxScale2x(sharp1x, fw, fh);
-        const up4x = epxScale2x(up2x, fw * 2, fh * 2);
-        const outlined4x = applyAdaptiveSilhouetteOutline(up4x, fw4, fh4);
-
-        const outImgData = dstCtx.createImageData(fw4, fh4);
-        const outBytes = outImgData.data;
-        for (let i = 0; i < outlined4x.length; i++) {
-          const p = outlined4x[i];
-          const bi = i * 4;
-          outBytes[bi] = (p >>> 16) & 0xff;
-          outBytes[bi + 1] = (p >>> 8) & 0xff;
-          outBytes[bi + 2] = p & 0xff;
-          outBytes[bi + 3] = (p >>> 24) & 0xff;
-        }
-        dstCtx.putImageData(outImgData, c * fw4, r * fh4);
-      }
+    if (cache) {
+      const targetCache = cache;
+      dstCanvas.toBlob((blob) => {
+        if (!blob) return;
+        targetCache
+          .put(
+            cacheUrl,
+            new Response(blob, { headers: { 'Content-Type': 'image/png' } })
+          )
+          .catch(() => {});
+      }, 'image/png');
     }
-
-    scene.textures.remove(key);
-    const hdSheet = scene.textures.addSpriteSheet(key, dstCanvas as unknown as HTMLImageElement, {
-      frameWidth: fw4,
-      frameHeight: fh4
-    });
-    if (!hdSheet) continue;
-    hdSheet.setFilter(Phaser.Textures.FilterMode.NEAREST);
-
-    (['down', 'left', 'right', 'up'] as const).forEach((dName, rowIdx) => {
-      const animKey = `${key}_${dName}`;
-      if (scene.anims.exists(animKey)) {
-        scene.anims.remove(animKey);
-      }
-      scene.anims.create({
-        key: animKey,
-        frames: [
-          { key, frame: rowIdx * 4 + 0 },
-          { key, frame: rowIdx * 4 + 1 },
-          { key, frame: rowIdx * 4 + 2 },
-          { key, frame: rowIdx * 4 + 3 }
-        ],
-        frameRate: 8,
-        repeat: -1
-      });
-    });
   }
+}
+
+export function enhanceAllCharacterTextures(scene: Phaser.Scene): void {
+  void enhanceAllCharacterTexturesCached(scene);
 }

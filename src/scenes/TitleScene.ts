@@ -89,13 +89,15 @@ export class TitleScene extends Phaser.Scene {
       this.clouds.push(c);
     }
 
-    // 2. 廣闊宮苑地面
+    // 2. 廣闊宮苑地面（烘焙為單張 RenderTexture 減輕繪圖呼叫）
+    const groundRt = this.add
+      .renderTexture(-18 * TILE_SIZE, 8 * TILE_SIZE, 60 * TILE_SIZE, 26 * TILE_SIZE)
+      .setOrigin(0, 0)
+      .setDepth(2);
+    groundRt.beginDraw();
     for (let r = 8; r <= 33; r++) {
-      const py = r * TILE_SIZE + TILE_SIZE / 2;
       for (let c = -18; c <= 41; c++) {
-        const px = c * TILE_SIZE + TILE_SIZE / 2;
         const h = spatialHash(c, r);
-
         let tileFrame: number;
         if (c >= 10 && c <= 13) {
           if (r >= 10 && (c === 11 || c === 12) && r % 3 === 1) {
@@ -112,10 +114,15 @@ export class TitleScene extends Phaser.Scene {
           tileFrame =
             COURTYARD_BRICK_VARIANTS[h % COURTYARD_BRICK_VARIANTS.length];
         }
-
-        this.add.image(px, py, 'palace_tiles', tileFrame).setDepth(2);
+        groundRt.batchDrawFrame(
+          'palace_tiles',
+          tileFrame,
+          (c + 18) * TILE_SIZE,
+          (r - 8) * TILE_SIZE
+        );
       }
     }
+    groundRt.endDraw();
 
     // 3. 屋簷與宮牆地面投影
     const shadowGfx = this.add.graphics().setDepth(3);
@@ -231,7 +238,7 @@ export class TitleScene extends Phaser.Scene {
 
     const ui = this.registry.get('ui') as HudUI;
 
-    // 5. 殿前漢白玉御道上的康、雍、乾三朝皇帝（點按以「課堂分關」模式進入該朝）
+    // 5. 殿前漢白玉御道上的康、雍、乾三朝皇帝
     const emperorY = 250;
     const emperors: Array<{
       id: StageId;
@@ -333,7 +340,7 @@ export class TitleScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setDepth(26);
 
-    // 7. 渲染標題選單（支援直接進入「向乾隆進諫」）
+    // 7. 渲染標題選單（支援繼續上次存檔與直接向乾隆進諫）
     this.openTitleMenu();
 
     // 8. 依據裝置方向與選單實際高度動態對齊視窗
@@ -356,7 +363,9 @@ export class TitleScene extends Phaser.Scene {
 
   private openTitleMenu(): void {
     const ui = this.registry.get('ui') as HudUI;
-    ui.setNavigationHandlers({});
+    ui.setNavigationHandlers({
+      onResetSave: () => this.openTitleMenu()
+    });
     ui.renderTitleScreen(
       () => {
         gameState.startSequentialMode();
@@ -376,6 +385,16 @@ export class TitleScene extends Phaser.Scene {
           entrySource: 'title',
           onFinish: () => this.openTitleMenu()
         });
+      },
+      () => {
+        if (
+          gameState.mode === 'class' &&
+          gameState.completedClassStages.has(gameState.currentStage)
+        ) {
+          this.scene.start('ClassSelectScene');
+        } else {
+          this.scene.start('ExploreScene');
+        }
       }
     );
 
@@ -397,7 +416,9 @@ export class TitleScene extends Phaser.Scene {
       '#hud-main-layer .title-dock'
     );
     const btnStack = dock?.querySelector<HTMLElement>('.btn-stack');
-    const buttons = dock?.querySelectorAll<HTMLButtonElement>('.pixel-btn');
+    const buttons = dock?.querySelectorAll<HTMLButtonElement>(
+      '.btn-stack .pixel-btn'
+    );
     const noteEl = dock?.querySelector<HTMLElement>('.title-dock-note');
 
     const isCompactLandscape = viewW > viewH && viewH < 560;
@@ -405,24 +426,24 @@ export class TitleScene extends Phaser.Scene {
 
     if (dock && btnStack) {
       if (isCompactLandscape || isWideLandscape) {
-        dock.style.padding = isCompactLandscape ? '6px 10px' : '10px 14px';
-        dock.style.bottom = isCompactLandscape ? '6px' : '14px';
-        dock.style.width = 'min(94vw, 620px)';
-        dock.style.gap = isCompactLandscape ? '4px' : '7px';
+        dock.style.padding = isCompactLandscape ? '6px 10px' : '9px 14px';
+        dock.style.bottom = isCompactLandscape ? '6px' : '12px';
+        dock.style.width = 'min(95vw, 660px)';
+        dock.style.gap = isCompactLandscape ? '4px' : '6px';
 
         btnStack.style.display = 'flex';
         btnStack.style.flexDirection = 'row';
-        btnStack.style.gap = '8px';
+        btnStack.style.gap = '7px';
 
         buttons?.forEach((btn) => {
           btn.style.flex = '1 1 0';
-          btn.style.padding = isCompactLandscape ? '7px 8px' : '10px 12px';
-          btn.style.fontSize = isCompactLandscape ? '13px' : '15px';
+          btn.style.padding = isCompactLandscape ? '7px 8px' : '9px 11px';
+          btn.style.fontSize = isCompactLandscape ? '13px' : '14.5px';
         });
 
         if (noteEl) {
-          noteEl.style.fontSize = isCompactLandscape ? '11.5px' : '12.5px';
-          noteEl.style.display = viewH < 360 ? 'none' : 'block';
+          noteEl.style.fontSize = isCompactLandscape ? '11px' : '12px';
+          noteEl.style.display = viewH < 380 ? 'none' : 'block';
         }
       } else {
         dock.style.cssText = '';

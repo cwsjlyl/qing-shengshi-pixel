@@ -13,10 +13,26 @@ import {
   StageId
 } from '../data/content';
 import {
+  CER_PRECEDENTS,
+  CER_PROBLEMS,
+  GLOSSARY_TERMS,
+  JIGSAW_SUMMARY_CARDS,
+  annotateGlossaryHtml,
+  composeCerDraft,
+  getQuizEvidenceHint,
+  isSpeechSupported,
+  speakTextCantonese,
+  stopSpeaking
+} from '../data/learningEnhancements';
+import {
   REMONSTRANCE_SUGGESTIONS,
   buildQianlongGeminiPrompt
 } from '../data/qianlongAsk';
-import { gameState } from '../state/gameState';
+import { MEDAL_LABELS, gameState } from '../state/gameState';
+import {
+  getPortraitForSpeaker,
+  renderHistorianCertificateDataUrl
+} from './portraitAndCert';
 
 export interface DirectionInputState {
   up: boolean;
@@ -28,6 +44,7 @@ export interface DirectionInputState {
 export interface NavigationHandlers {
   onGoTitle?: () => void;
   onGoClassSelect?: () => void;
+  onResetSave?: () => void;
 }
 
 export class HudUI {
@@ -37,6 +54,10 @@ export class HudUI {
   private settingsLayer: HTMLElement;
   private minimapHost: HTMLElement;
   private minimapCanvas: HTMLCanvasElement | null = null;
+  private minimapStaticCanvas: HTMLCanvasElement | null = null;
+  private minimapCacheKey = '';
+  private isMinimapExpanded = false;
+  private isStatusChecklistExpanded = false;
 
   public dirState: DirectionInputState = {
     up: false,
@@ -63,6 +84,9 @@ export class HudUI {
       <div id="hud-main-layer"></div>
       <div id="hud-minimap-host" aria-hidden="true"></div>
       <div id="hud-top-right">
+        <button id="btn-hud-notebook" class="settings-fab notebook-fab" type="button" aria-label="奏摺證據簿">
+          <span>📜</span><span>證據簿</span>
+        </button>
         <button id="btn-hud-settings" class="settings-fab" type="button" aria-label="設定">
           <span>⚙</span><span>設定</span>
         </button>
@@ -74,6 +98,16 @@ export class HudUI {
     this.minimapHost = this.root.querySelector('#hud-minimap-host')!;
     this.topRightLayer = this.root.querySelector('#hud-top-right')!;
     this.settingsLayer = this.root.querySelector('#hud-settings-layer')!;
+
+    this.topRightLayer
+      .querySelector('#btn-hud-notebook')
+      ?.addEventListener('click', () => {
+        if (this.isSettingsOpen) {
+          this.closeSettingsModal();
+        } else {
+          this.openNotebookModal();
+        }
+      });
 
     this.topRightLayer
       .querySelector('#btn-hud-settings')
@@ -111,10 +145,79 @@ export class HudUI {
   }
 
   private clearActiveKeyListener(): void {
+    stopSpeaking();
     if (this.activeKeyCleanup) {
       this.activeKeyCleanup();
       this.activeKeyCleanup = null;
     }
+  }
+
+  /** 右上角「📜 奏摺證據簿」：隨時翻閱三朝已收集史料原話與御賜印章 */
+  public openNotebookModal(): void {
+    this.isSettingsOpen = true;
+    this.resetInputState();
+
+    const sectionsHtml = STAGE_ORDER.map((stId) => {
+      const cfg = STAGES[stId];
+      const prog = gameState.getStageProgress(stId);
+      const npcs = Object.values(cfg.npcs);
+      const visitedList = npcs.filter((n) => prog.visitedNpcs.has(n.id));
+
+      const itemsHtml =
+        visitedList.length > 0
+          ? visitedList
+              .map(
+                (n) => `
+              <div class="notebook-entry">
+                <div class="notebook-speaker">✓ ${n.name}</div>
+                <div class="notebook-quote">「${n.lines.join(' ')}」</div>
+              </div>
+            `
+              )
+              .join('')
+          : `<div style="font-size:13px;color:#6e563a;font-weight:700;">尚未收集本朝人物證據（共 ${npcs.length} 位待訪）</div>`;
+
+      const mgTags = cfg.minigames
+        .map((m) => {
+          const done = prog.completedMinigames.has(m.id);
+          const medal = gameState.minigameMedals[m.id];
+          return `<span class="check-chip ${done ? 'done' : ''}" style="color:${done ? '#f2fff9' : '#4a3623'};background:${done ? 'rgba(34,114,86,0.9)' : '#efe5cf'};border-color:#9e7544;">${m.stationName}：${medal ? MEDAL_LABELS[medal] : done ? '已完成' : '未完成'}</span>`;
+        })
+        .join(' ');
+
+      return `
+        <div class="panel-box" style="display:flex;flex-direction:column;gap:6px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-weight:800;font-size:15px;color:#781912;">${cfg.stageName}</span>
+            <span style="font-size:12px;font-weight:800;color:#543f30;">已收證據 ${visitedList.length} / ${npcs.length}</span>
+          </div>
+          ${itemsHtml}
+          <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:2px;">${mgTags}</div>
+        </div>
+      `;
+    }).join('');
+
+    this.settingsLayer.innerHTML = `
+      <div class="overlay-backdrop" id="notebook-backdrop">
+        <div class="card-modal" style="max-width:560px;">
+          <div class="panel-header">
+            <span>📜 大清三朝奏摺證據簿</span>
+            <span class="badge-sub">史料筆記</span>
+          </div>
+          <div class="hint-banner">
+            出關答題與向乾隆進諫前，可隨時翻閱已收集的人物原話與歷史證據！
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            ${sectionsHtml}
+          </div>
+          <button id="btn-close-notebook" class="pixel-btn gold" type="button">合上證據簿，繼續探索</button>
+        </div>
+      </div>
+    `;
+
+    this.settingsLayer
+      .querySelector('#btn-close-notebook')
+      ?.addEventListener('click', () => this.closeSettingsModal());
   }
 
   private openSettingsModal(): void {
@@ -124,18 +227,20 @@ export class HudUI {
     const canGoClass =
       gameState.mode === 'class' && Boolean(this.navHandlers.onGoClassSelect);
     const canGoTitle = Boolean(this.navHandlers.onGoTitle);
+    const hasSave = gameState.hasSavedProgress();
 
     this.settingsLayer.innerHTML = `
       <div class="overlay-backdrop" id="settings-backdrop">
-        <div class="card-modal" style="max-width:440px;">
+        <div class="card-modal" style="max-width:450px;">
           <div class="panel-header">
             <span>遊戲設定與說明</span>
             <span class="badge-sub">單一主畫面</span>
           </div>
           <div class="panel-box" style="display:flex;flex-direction:column;gap:8px;">
-            <div style="font-weight:800;font-size:14px;color:#681711;">操作說明</div>
+            <div style="font-weight:800;font-size:14px;color:#681711;">雙軌操作說明</div>
             <div style="font-size:13.5px;line-height:1.55;font-weight:600;">
-              ${PROMPTS.CONTROLS_GUIDE}
+              ${PROMPTS.CONTROLS_GUIDE}<br/>
+              ✨ 亦支援「直接點按地面或人物」自動走過去互動！進度會自動存檔於本機。
             </div>
           </div>
           <div class="btn-stack">
@@ -148,6 +253,11 @@ export class HudUI {
             ${
               canGoTitle
                 ? `<button id="btn-set-title" class="pixel-btn secondary" type="button">返回標題畫面</button>`
+                : ''
+            }
+            ${
+              hasSave
+                ? `<button id="btn-set-clearsave" class="pixel-btn" type="button" style="font-size:13.5px;padding:8px;">🗑 清除本機進度存檔</button>`
                 : ''
             }
           </div>
@@ -174,9 +284,23 @@ export class HudUI {
         this.clearActiveKeyListener();
         this.navHandlers.onGoTitle?.();
       });
+
+    this.settingsLayer
+      .querySelector('#btn-set-clearsave')
+      ?.addEventListener('click', () => {
+        gameState.clearAllSavedProgress();
+        this.closeSettingsModal();
+        this.clearActiveKeyListener();
+        if (this.navHandlers.onResetSave) {
+          this.navHandlers.onResetSave();
+        } else {
+          this.navHandlers.onGoTitle?.();
+        }
+      });
   }
 
   public closeSettingsModal(): void {
+    stopSpeaking();
     this.isSettingsOpen = false;
     this.settingsLayer.innerHTML = '';
   }
@@ -193,9 +317,14 @@ export class HudUI {
     this.minimapHost.innerHTML = '';
     this.minimapCanvas = null;
     this.root.classList.remove('explore-with-minimap');
+    this.root.classList.remove('explore-minimap-expanded');
   }
 
+  /**
+   * 離屏底圖快取（Offscreen Static Layer Caching）＋ 可點按放大／縮小切換的小地圖
+   */
   public updateExploreMinimap(opts: {
+    stageKey?: string;
     cols: number;
     rows: number;
     solid: boolean[][];
@@ -210,10 +339,37 @@ export class HudUI {
     viewTiles?: { x1: number; y1: number; x2: number; y2: number };
   }): void {
     if (!this.minimapCanvas) {
-      this.minimapHost.innerHTML = `<div class="explore-minimap"><canvas width="272" height="208"></canvas></div>`;
+      this.minimapHost.innerHTML = `
+        <div class="explore-minimap ${this.isMinimapExpanded ? 'expanded' : ''}" id="explore-minimap-box">
+          <canvas width="272" height="208"></canvas>
+          <button type="button" class="minimap-zoom-btn" id="btn-minimap-toggle" title="切換小地圖大小">
+            ${this.isMinimapExpanded ? '縮小 ▴' : '放大 ▾'}
+          </button>
+        </div>
+      `;
       this.minimapCanvas = this.minimapHost.querySelector('canvas');
       this.root.classList.add('explore-with-minimap');
+      this.root.classList.toggle('explore-minimap-expanded', this.isMinimapExpanded);
+
+      this.minimapHost
+        .querySelector('#btn-minimap-toggle')
+        ?.addEventListener('pointerdown', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.isMinimapExpanded = !this.isMinimapExpanded;
+          const box = this.minimapHost.querySelector('#explore-minimap-box');
+          const btn = this.minimapHost.querySelector('#btn-minimap-toggle');
+          box?.classList.toggle('expanded', this.isMinimapExpanded);
+          this.root.classList.toggle(
+            'explore-minimap-expanded',
+            this.isMinimapExpanded
+          );
+          if (btn) {
+            btn.textContent = this.isMinimapExpanded ? '縮小 ▴' : '放大 ▾';
+          }
+        });
     }
+
     const canvas = this.minimapCanvas;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
@@ -229,27 +385,38 @@ export class HudUI {
     const cellW = mapW / cols;
     const cellH = mapH / rows;
 
-    ctx.clearRect(0, 0, cw, ch);
-    ctx.fillStyle = 'rgba(22, 14, 10, 0.42)';
-    ctx.fillRect(0, 0, cw, ch);
-
-    ctx.fillStyle = 'rgba(70, 52, 38, 0.55)';
-    ctx.fillRect(pad, pad, mapW, mapH);
-
-    ctx.fillStyle = 'rgba(156, 40, 32, 0.78)';
-    for (let y = 0; y < rows; y++) {
-      const row = solid[y];
-      if (!row) continue;
-      for (let x = 0; x < cols; x++) {
-        if (!row[x]) continue;
-        ctx.fillRect(
-          pad + x * cellW,
-          pad + y * cellH,
-          Math.max(1, cellW),
-          Math.max(1, cellH)
-        );
+    const cacheKey = `${opts.stageKey || gameState.currentStage}:${cols}x${rows}`;
+    if (!this.minimapStaticCanvas || this.minimapCacheKey !== cacheKey) {
+      this.minimapCacheKey = cacheKey;
+      const off = document.createElement('canvas');
+      off.width = cw;
+      off.height = ch;
+      const octx = off.getContext('2d');
+      if (octx) {
+        octx.fillStyle = 'rgba(22, 14, 10, 0.48)';
+        octx.fillRect(0, 0, cw, ch);
+        octx.fillStyle = 'rgba(70, 52, 38, 0.58)';
+        octx.fillRect(pad, pad, mapW, mapH);
+        octx.fillStyle = 'rgba(156, 40, 32, 0.8)';
+        for (let y = 0; y < rows; y++) {
+          const row = solid[y];
+          if (!row) continue;
+          for (let x = 0; x < cols; x++) {
+            if (!row[x]) continue;
+            octx.fillRect(
+              pad + x * cellW,
+              pad + y * cellH,
+              Math.max(1, cellW),
+              Math.max(1, cellH)
+            );
+          }
+        }
       }
+      this.minimapStaticCanvas = off;
     }
+
+    ctx.clearRect(0, 0, cw, ch);
+    ctx.drawImage(this.minimapStaticCanvas, 0, 0);
 
     const drawMarker = (
       tx: number,
@@ -293,32 +460,47 @@ export class HudUI {
     drawMarker(playerTileX, playerTileY, 'rgba(90, 180, 255, 1)', 4.6);
   }
 
-  // 1. 標題畫面疊加啟動卡（含「由康熙順序探索」、「課堂分關」、「向乾隆進諫」三個選項）
+  // 1. 標題畫面疊加啟動卡（含本地存檔續玩、順序探索、課堂分關、向乾隆進諫）
   public renderTitleScreen(
     onSequential: () => void,
     onClassSelect: () => void,
-    onDirectRemonstrate: () => void
+    onDirectRemonstrate: () => void,
+    onResumeSaved?: () => void
   ): void {
     this.clearActiveKeyListener();
     this.closeSettingsModal();
     this.isPanelModalOpen = false;
     this.resetInputState();
-
     this.hideMinimap();
+
+    const canResume = Boolean(onResumeSaved) && gameState.hasSavedProgress();
+    const resumeLabel =
+      gameState.mode === 'class'
+        ? `📂 繼續課堂分關（已過 ${gameState.completedClassStages.size}/3 朝）`
+        : `📂 繼續上次進度：${STAGE_NAMES[gameState.currentStage]}`;
+
     this.mainLayer.innerHTML = `
       <img class="title-school-logo" src="./assets/ui/school-logo-cst.png" alt="CST school logo" />
       <div class="title-dock">
+        ${
+          canResume
+            ? `<button id="btn-resume-save" class="pixel-btn resume-save-btn" type="button">${resumeLabel}</button>`
+            : ''
+        }
         <div class="btn-stack">
           <button id="btn-seq" class="pixel-btn gold" type="button">${MODE_SEQUENTIAL_LABEL}</button>
           <button id="btn-class" class="pixel-btn" type="button">${MODE_CLASS_LABEL}</button>
           <button id="btn-remonstrate" class="pixel-btn jade" type="button">${MODE_REMONSTRATE_LABEL}</button>
         </div>
         <div class="title-dock-note">
-          點選上方模式進入清朝盛世探索，或直接「${MODE_REMONSTRATE_LABEL}」；亦可點按殿前皇帝公仔進入分關（右上角「設定」可查閱說明）
+          點選模式探索或直接「${MODE_REMONSTRATE_LABEL}」；亦可點按殿前皇帝公仔進入分關（進度自動存檔）
         </div>
       </div>
     `;
 
+    this.mainLayer
+      .querySelector('#btn-resume-save')
+      ?.addEventListener('click', () => onResumeSaved?.());
     this.mainLayer
       .querySelector('#btn-seq')
       ?.addEventListener('click', () => onSequential());
@@ -362,7 +544,7 @@ export class HudUI {
       });
   }
 
-  // 3. 課堂分關疊加選關卡
+  // 3. 課堂分關疊加選關卡（全通關解鎖「大清特命盛世史官證書」）
   public renderClassSelectScreen(
     onPickStage: (stage: StageId) => void,
     onBackTitle: () => void
@@ -373,11 +555,13 @@ export class HudUI {
     this.isPanelModalOpen = false;
     this.resetInputState();
 
+    const allDone = gameState.isAllClassStagesCompleted();
+
     const buttonsHtml = STAGE_ORDER.map((id) => {
       const done = gameState.completedClassStages.has(id);
       return `
         <button class="pixel-btn ${done ? 'jade' : 'gold'}" data-stage="${id}" type="button">
-          ${STAGE_NAMES[id]} ${done ? '✓ 已完成' : ''}
+          ${STAGE_NAMES[id]} ${done ? '✓' : ''}
         </button>
       `;
     }).join('');
@@ -385,7 +569,14 @@ export class HudUI {
     this.mainLayer.innerHTML = `
       <div class="class-select-dock">
         <div class="btn-row">${buttonsHtml}</div>
-        <button id="btn-back-title" class="pixel-btn secondary" type="button" style="padding:8px;">返回標題畫面</button>
+        <div class="btn-row">
+          ${
+            allDone
+              ? `<button id="btn-open-cert" class="pixel-btn gold" type="button" style="padding:8px 12px;">🏅 領取《大清盛世史官證書》</button>`
+              : ''
+          }
+          <button id="btn-back-title" class="pixel-btn secondary" type="button" style="padding:8px;">返回標題畫面</button>
+        </div>
       </div>
     `;
 
@@ -399,11 +590,19 @@ export class HudUI {
       });
 
     this.mainLayer
+      .querySelector('#btn-open-cert')
+      ?.addEventListener('click', () => {
+        this.showCertificateModal('課堂分關三朝全考察', () =>
+          this.renderClassSelectScreen(onPickStage, onBackTitle)
+        );
+      });
+
+    this.mainLayer
       .querySelector('#btn-back-title')
       ?.addEventListener('click', () => onBackTitle());
   }
 
-  // 4. 單一主畫面探索 HUD
+  // 4. 單一主畫面探索 HUD（印章收納進度列 ＋ 跨三朝大清國運儀表）
   public renderExploreHUD(opts: {
     zoneName: string;
     hintText: string;
@@ -417,8 +616,15 @@ export class HudUI {
 
     const stageCfg = STAGES[gameState.currentStage];
     const prog = gameState.getStageProgress();
+    const metrics = gameState.getDynastyMetrics();
 
-    const npcChips = Object.values(stageCfg.npcs)
+    const npcs = Object.values(stageCfg.npcs);
+    const doneNpcCount = npcs.filter((n) => prog.visitedNpcs.has(n.id)).length;
+    const doneMgCount = stageCfg.minigames.filter((m) =>
+      prog.completedMinigames.has(m.id)
+    ).length;
+
+    const npcChips = npcs
       .map((n) => {
         const done = prog.visitedNpcs.has(n.id);
         return `<span class="check-chip ${done ? 'done' : ''}">${done ? '✓' : '○'} ${n.name}</span>`;
@@ -428,7 +634,8 @@ export class HudUI {
     const mgChips = stageCfg.minigames
       .map((m) => {
         const done = prog.completedMinigames.has(m.id);
-        return `<span class="check-chip ${done ? 'done' : ''}">${done ? '★' : '☆'} ${m.stationName}</span>`;
+        const medal = gameState.minigameMedals[m.id];
+        return `<span class="check-chip ${done ? 'done' : ''}">${done ? '★' : '☆'} ${m.stationName}${medal ? `(${medal === 'gold' ? '金' : medal === 'silver' ? '銀' : '銅'})` : ''}</span>`;
       })
       .join('');
 
@@ -442,9 +649,40 @@ export class HudUI {
         <div class="hud-status-top">
           <span class="hud-stage-pill">${stageCfg.shortTitle}</span>
           <span id="hud-zone-label" class="hud-zone-text">${opts.zoneName}</span>
+          <button type="button" id="btn-toggle-detail" class="hud-detail-toggle">
+            ${this.isStatusChecklistExpanded ? '收起 ▴' : '清單 ▾'}
+          </button>
         </div>
+
+        <div class="stamp-summary-row">
+          <span class="stamp-pill ${doneNpcCount === npcs.length ? 'complete' : ''}">
+            📜 證據 ${doneNpcCount}/${npcs.length}
+          </span>
+          <span class="stamp-pill ${doneMgCount === stageCfg.minigames.length ? 'complete' : ''}">
+            ⚔️ 挑戰 ${doneMgCount}/${stageCfg.minigames.length}
+          </span>
+          <span class="dynasty-trend-tag">${metrics.trendNote}</span>
+        </div>
+
+        <div class="dynasty-meters-row" title="大清國運儀表：隨歷史事件動態升降">
+          <div class="meter-item">
+            <span>💰國庫</span>
+            <div class="meter-track"><div class="meter-fill ${metrics.treasury <= 55 ? 'warn' : 'gold'}" style="width:${metrics.treasury}%"></div></div>
+          </div>
+          <div class="meter-item">
+            <span>❤️民心</span>
+            <div class="meter-track"><div class="meter-fill ${metrics.morale <= 60 ? 'warn' : 'jade'}" style="width:${metrics.morale}%"></div></div>
+          </div>
+          <div class="meter-item">
+            <span>🗺️版圖</span>
+            <div class="meter-track"><div class="meter-fill blue" style="width:${metrics.territory}%"></div></div>
+          </div>
+        </div>
+
         <div id="hud-hint" class="hud-hint-line">${opts.hintText}</div>
-        <div id="hud-checklist" class="checklist-wrap">${npcChips}${mgChips}</div>
+        <div id="hud-checklist" class="checklist-wrap" style="display:${this.isStatusChecklistExpanded ? 'flex' : 'none'};">
+          ${npcChips}${mgChips}
+        </div>
       </div>
 
       <div class="joystick-zone" id="joystick-zone">
@@ -464,6 +702,22 @@ export class HudUI {
         </button>
       </div>
     `;
+
+    this.mainLayer
+      .querySelector('#btn-toggle-detail')
+      ?.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.isStatusChecklistExpanded = !this.isStatusChecklistExpanded;
+        const wrap = this.mainLayer.querySelector<HTMLElement>('#hud-checklist');
+        const btn = this.mainLayer.querySelector<HTMLElement>('#btn-toggle-detail');
+        if (wrap) {
+          wrap.style.display = this.isStatusChecklistExpanded ? 'flex' : 'none';
+        }
+        if (btn) {
+          btn.textContent = this.isStatusChecklistExpanded ? '收起 ▴' : '清單 ▾';
+        }
+      });
 
     this.bindVirtualJoystick();
 
@@ -591,7 +845,7 @@ export class HudUI {
     });
   }
 
-  // 5. 疊加對話面板
+  // 5. 疊加對話面板（含角色 4x 高清半身頭像、離線粵語朗讀、點按歷史難詞白話註解）
   public showDialogue(
     speaker: string,
     lines: string[],
@@ -604,6 +858,7 @@ export class HudUI {
 
     const advance = () => {
       if (this.isSettingsOpen) return;
+      stopSpeaking();
       if (idx < lines.length - 1) {
         idx++;
         renderStep();
@@ -623,22 +878,69 @@ export class HudUI {
     window.addEventListener('keydown', onKey);
     this.activeKeyCleanup = () => window.removeEventListener('keydown', onKey);
 
+    const portraitUrl = getPortraitForSpeaker(speaker);
+    const canSpeak = isSpeechSupported();
+
     const renderStep = () => {
       const isLast = idx >= lines.length - 1;
+      const annotatedBodyHtml = annotateGlossaryHtml(lines[idx]);
+
       this.mainLayer.innerHTML = `
         <div class="overlay-bottom-wrap">
           <div class="dialogue-modal">
-            <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
               <span class="dialogue-speaker">${speaker}</span>
-              <span style="font-size:12.5px;color:#6e563a;font-weight:800;">${idx + 1} / ${lines.length}</span>
+              <div style="display:flex;align-items:center;gap:8px;">
+                ${
+                  canSpeak
+                    ? `<button id="btn-dlg-tts" class="tts-pill-btn" type="button">🔊 粵語朗讀</button>`
+                    : ''
+                }
+                <span style="font-size:12.5px;color:#6e563a;font-weight:800;">${idx + 1} / ${lines.length}</span>
+              </div>
             </div>
-            <div class="dialogue-body">${lines[idx]}</div>
+
+            <div class="dialogue-content-row">
+              ${
+                portraitUrl
+                  ? `<div class="dialogue-portrait-frame"><img src="${portraitUrl}" alt="${speaker}" /></div>`
+                  : ''
+              }
+              <div class="dialogue-body" style="flex:1 1 auto;">
+                <div>${annotatedBodyHtml}</div>
+                <div id="glossary-tooltip-slot"></div>
+              </div>
+            </div>
+
             <button id="btn-dlg-next" class="pixel-btn gold" type="button">
               ${isLast ? '確定' : '下一句 ▶'}
             </button>
           </div>
         </div>
       `;
+
+      this.mainLayer
+        .querySelector('#btn-dlg-tts')
+        ?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          speakTextCantonese(`${speaker}說：${lines[idx]}`);
+        });
+
+      const tooltipSlot = this.mainLayer.querySelector<HTMLElement>(
+        '#glossary-tooltip-slot'
+      );
+      this.mainLayer
+        .querySelectorAll<HTMLButtonElement>('[data-glossary-idx]')
+        .forEach((btn) => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const gIdx = Number(btn.dataset.glossaryIdx);
+            const entry = GLOSSARY_TERMS[gIdx];
+            if (entry && tooltipSlot) {
+              tooltipSlot.innerHTML = `<div class="glossary-popover">📖 <b>${entry.term}</b>：${entry.meaning}</div>`;
+            }
+          });
+        });
 
       this.mainLayer
         .querySelector<HTMLButtonElement>('#btn-dlg-next')
@@ -648,7 +950,7 @@ export class HudUI {
     renderStep();
   }
 
-  // 6. 疊加三題選擇題卡牌
+  // 6. 疊加三題選擇題卡牌（含題目朗讀與答錯史料回溯提示）
   public showStageQuiz(
     quizzes: QuizItem[],
     onAllPassed: () => void,
@@ -670,6 +972,7 @@ export class HudUI {
 
     let currentOptions = shuffledOptionsFor(quizzes[0]);
     let feedbackHtml = '';
+    const canSpeak = isSpeechSupported();
 
     const renderQuiz = () => {
       const item = quizzes[qIndex];
@@ -688,21 +991,43 @@ export class HudUI {
           <div class="card-modal">
             <div class="panel-header">
               <span>出關問題挑戰（第 ${qIndex + 1} / ${quizzes.length} 題）</span>
+              ${
+                canSpeak
+                  ? `<button id="btn-quiz-tts" class="tts-pill-btn light" type="button">🔊 朗讀</button>`
+                  : ''
+              }
             </div>
             <div class="quiz-question">${item.question}</div>
             ${feedbackHtml}
             <div class="btn-stack">${optsHtml}</div>
-            <button id="btn-quiz-cancel" class="pixel-btn secondary" type="button" style="font-size:13px;padding:7px;">
-              暫時離開返回探索
-            </button>
+            <div class="btn-row">
+              <button id="btn-quiz-notebook" class="pixel-btn jade" type="button" style="font-size:13px;padding:7px;">
+                📜 翻閱證據簿
+              </button>
+              <button id="btn-quiz-cancel" class="pixel-btn secondary" type="button" style="font-size:13px;padding:7px;">
+                暫時離開
+              </button>
+            </div>
           </div>
         </div>
       `;
 
       this.mainLayer
+        .querySelector('#btn-quiz-tts')
+        ?.addEventListener('click', () => {
+          const allTxt = `${item.question}。選項一：${currentOptions[0]}；選項二：${currentOptions[1]}；選項三：${currentOptions[2]}`;
+          speakTextCantonese(allTxt);
+        });
+
+      this.mainLayer
+        .querySelector('#btn-quiz-notebook')
+        ?.addEventListener('click', () => this.openNotebookModal());
+
+      this.mainLayer
         .querySelectorAll<HTMLButtonElement>('[data-opt-idx]')
         .forEach((btn) => {
           btn.addEventListener('click', () => {
+            stopSpeaking();
             const picked = currentOptions[Number(btn.dataset.optIdx)];
             if (picked === item.correct) {
               if (qIndex < quizzes.length - 1) {
@@ -715,7 +1040,14 @@ export class HudUI {
                 onAllPassed();
               }
             } else {
-              feedbackHtml = `<div class="feedback-msg error">答案未正確，請回想剛才收集的證據再試一次！</div>`;
+              const hint = getQuizEvidenceHint(
+                gameState.currentStage,
+                item.question
+              );
+              feedbackHtml = `
+                <div class="feedback-msg error">答案未正確，別灰心！請看下方史料回溯提示：</div>
+                <div class="hint-banner" style="font-size:13px;">${hint}</div>
+              `;
               renderQuiz();
             }
           });
@@ -724,12 +1056,146 @@ export class HudUI {
       this.mainLayer
         .querySelector('#btn-quiz-cancel')
         ?.addEventListener('click', () => {
+          stopSpeaking();
           this.isPanelModalOpen = false;
           onCancel();
         });
     };
 
     renderQuiz();
+  }
+
+  /** 課堂分關完成後彈出「拼圖式合作學習（Jigsaw）組員互教重點卡」 */
+  public showJigsawSummaryCard(stageId: StageId, onContinue: () => void): void {
+    this.clearActiveKeyListener();
+    this.hideMinimap();
+    this.isPanelModalOpen = true;
+    this.resetInputState();
+
+    const card = JIGSAW_SUMMARY_CARDS[stageId];
+    const policiesHtml = card.corePolicies
+      .map((p) => `<li style="margin-bottom:4px;">${p}</li>`)
+      .join('');
+
+    this.mainLayer.innerHTML = `
+      <div class="overlay-backdrop">
+        <div class="card-modal" style="max-width:560px;">
+          <div class="panel-header">
+            <span>📋 ${card.dynastyTitle}</span>
+            <span class="badge-sub">合作學習</span>
+          </div>
+          <div class="panel-box" style="display:flex;flex-direction:column;gap:8px;">
+            <div>
+              <div style="font-weight:800;color:#781912;font-size:14.5px;margin-bottom:4px;">📌 朝廷重要治國政策：</div>
+              <ul style="margin:0;padding-left:20px;font-size:14px;font-weight:700;line-height:1.5;">${policiesHtml}</ul>
+            </div>
+            <div style="font-size:14px;line-height:1.5;font-weight:700;color:#17593d;background:#e6f7ef;padding:8px 10px;border-radius:6px;">
+              <b>✓ 盛世成效：</b>${card.positiveEffects}
+            </div>
+            <div style="font-size:13.5px;line-height:1.5;font-weight:700;color:#7a2e0e;background:#fff3e0;padding:8px 10px;border-radius:6px;">
+              <b>⚠️ 歷史隱憂／限制：</b>${card.risksOrLimits}
+            </div>
+          </div>
+          <div class="hint-banner" style="font-size:14px;">
+            ${card.teachingScript}
+          </div>
+          <div class="btn-row">
+            ${
+              isSpeechSupported()
+                ? `<button id="btn-jigsaw-tts" class="pixel-btn jade" type="button">🔊 朗讀匯報口訣</button>`
+                : ''
+            }
+            <button id="btn-jigsaw-done" class="pixel-btn gold" type="button">返回課堂分關選單 ▶</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    this.mainLayer
+      .querySelector('#btn-jigsaw-tts')
+      ?.addEventListener('click', () => speakTextCantonese(card.teachingScript));
+
+    this.mainLayer
+      .querySelector('#btn-jigsaw-done')
+      ?.addEventListener('click', () => {
+        stopSpeaking();
+        this.isPanelModalOpen = false;
+        onContinue();
+      });
+  }
+
+  /** 特命大清盛世史官電子證書產生與儲存面板 */
+  public showCertificateModal(modeTitle: string, onClose: () => void): void {
+    this.clearActiveKeyListener();
+    this.hideMinimap();
+    this.isPanelModalOpen = true;
+    this.resetInputState();
+
+    const renderCertView = () => {
+      const dataUrl = renderHistorianCertificateDataUrl({
+        studentName: gameState.studentName,
+        modeTitle,
+        medals: gameState.minigameMedals,
+        totalVisitedCount: gameState.getTotalVisitedEvidenceCount()
+      });
+
+      this.mainLayer.innerHTML = `
+        <div class="overlay-backdrop">
+          <div class="card-modal" style="max-width:600px;">
+            <div class="panel-header">
+              <span>🏅 特命大清盛世史官褒獎狀</span>
+              <span class="badge-sub">可下載／長按儲存</span>
+            </div>
+            <div class="panel-box" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <label for="cert-name-input" style="font-weight:800;font-size:14px;">班別及姓名：</label>
+              <input
+                id="cert-name-input"
+                class="ask-input"
+                style="flex:1 1 180px;padding:7px 10px;"
+                type="text"
+                maxlength="20"
+                placeholder="例如：6A 陳小明"
+                value="${gameState.studentName.replace(/"/g, '&quot;')}"
+              />
+              <button id="btn-cert-refresh" class="pixel-btn gold" type="button" style="padding:8px 12px;font-size:14px;">
+                更新證書姓名
+              </button>
+            </div>
+            <div style="text-align:center;background:#26150f;padding:8px;border-radius:8px;">
+              <img id="cert-preview-img" src="${dataUrl}" alt="大清盛世史官證書" style="width:100%;height:auto;border-radius:4px;pointer-events:auto;" />
+              <div style="color:#ffe48a;font-size:12px;font-weight:700;margin-top:5px;">
+                📱 iPad 可直接長按上方證書圖片點選「儲存到相片」，或點按下方下載按鈕
+              </div>
+            </div>
+            <div class="btn-row">
+              <a id="btn-cert-download" class="pixel-btn jade" href="${dataUrl}" download="康雍乾盛世_史官證書.png" style="text-decoration:none;">
+                📥 下載證書圖片（PNG）
+              </a>
+              <button id="btn-cert-close" class="pixel-btn secondary" type="button">返回</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      const nameInput = this.mainLayer.querySelector<HTMLInputElement>(
+        '#cert-name-input'
+      )!;
+      this.mainLayer
+        .querySelector('#btn-cert-refresh')
+        ?.addEventListener('click', () => {
+          gameState.setStudentName(nameInput.value);
+          renderCertView();
+        });
+
+      this.mainLayer
+        .querySelector('#btn-cert-close')
+        ?.addEventListener('click', () => {
+          this.isPanelModalOpen = false;
+          onClose();
+        });
+    };
+
+    renderCertView();
   }
 
   // 7. 疊加數字密碼鍵盤卡牌
@@ -854,7 +1320,6 @@ export class HudUI {
     renderPad();
   }
 
-  // 8. 老師最後密碼與「向乾隆進諫（輸出 Gemini Prompt）」卡牌
   public showTeacherPasswordPad(onSuccess: () => void): void {
     this.showPasswordPad({
       title: '老師的最後密碼',
@@ -874,7 +1339,7 @@ export class HudUI {
         await navigator.clipboard.writeText(text);
         return true;
       } catch {
-        // Fall through to execCommand fallback (e.g. Google Sites iframe or iPad Safari restriction)
+        // Fall through to execCommand fallback
       }
     }
 
@@ -902,9 +1367,8 @@ export class HudUI {
   }
 
   /**
-   * 向乾隆皇帝進諫面板：
-   * 乾隆不會直接回答，而是根據學生輸入的進諫內容產生一段可複製貼到 Gemini 的專屬 Prompt，
-   * 讓 Gemini 以乾隆皇帝身份回應學生的進諫、推演對清朝導致的後果，並生成四格漫畫圖像。
+   * 8. 升級版「有根有據（CER）向乾隆皇帝進諫」面板：
+   * 支援勾選晚年隱憂＋前朝治國根據自動組合奏摺草稿，並輸出含乾隆回應、四大後果推演與四格漫畫生圖的 Gemini Prompt
    */
   public showQianlongRemonstrancePanel(opts: {
     entrySource: 'sequential' | 'title';
@@ -916,6 +1380,19 @@ export class HudUI {
     this.isPanelModalOpen = true;
     this.resetInputState();
 
+    const selectedProblems = new Set<string>();
+    const selectedPrecedents = new Set<string>();
+
+    const problemBtnsHtml = CER_PROBLEMS.map(
+      (p) =>
+        `<button type="button" class="cer-pill-btn" data-cer-prob="${p.id}">○ ${p.label}</button>`
+    ).join('');
+
+    const precedentBtnsHtml = CER_PRECEDENTS.map(
+      (p) =>
+        `<button type="button" class="cer-pill-btn" data-cer-prec="${p.id}">○ ${p.label}</button>`
+    ).join('');
+
     const chipsHtml = REMONSTRANCE_SUGGESTIONS.map(
       (item, idx) =>
         `<button type="button" class="topic-chip-btn" data-chip-idx="${idx}">💡 ${item.label}</button>`
@@ -926,23 +1403,40 @@ export class HudUI {
 
     this.mainLayer.innerHTML = `
       <div class="overlay-backdrop">
-        <div class="card-modal" style="max-width:580px;">
+        <div class="card-modal" style="max-width:600px;">
           <div class="panel-header">
-            <span>向乾隆皇帝進諫</span>
-            <span class="badge-sub">生成 Gemini 指令＋四格漫畫</span>
+            <span>向乾隆皇帝進諫（有根有據奏摺）</span>
+            <span class="badge-sub">Gemini 指令＋四格漫畫</span>
           </div>
-          <div class="hint-banner">
-            請寫下你想向乾隆皇帝進獻的治國諫言（乾隆不會在此直接回答，系統會輸出專屬 Prompt，讓你一鍵複製貼到 Gemini，由 Gemini 以乾隆身份回應、推演清朝後果，並自動繪製「四格漫畫圖像」！）
+          <div class="hint-banner" style="font-size:13.5px;">
+            可先用下方「奏摺組合器」勾選歷史根據，再撰寫諫言輸出專屬 Prompt，一鍵複製貼到 Gemini 生成乾隆回應與「四格漫畫圖像」！
           </div>
-          <div class="panel-box" style="display:flex;flex-direction:column;gap:8px;">
-            <label for="qianlong-advice-input" style="font-size:14px;font-weight:800;color:#591812;">
-              你的進諫內容（可自由撰寫，或點選下方靈感再作修改）：
-            </label>
+
+          <div class="panel-box" style="display:flex;flex-direction:column;gap:7px;">
+            <div style="font-size:13px;font-weight:800;color:#781912;">
+              步驟一（可選）：點選你想解決的乾隆晚年問題
+            </div>
+            <div class="topic-chips">${problemBtnsHtml}</div>
+
+            <div style="font-size:13px;font-weight:800;color:#245943;margin-top:2px;">
+              步驟二（可選）：點選借鑑的前朝治國經驗
+            </div>
+            <div class="topic-chips">${precedentBtnsHtml}</div>
+
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;gap:6px;flex-wrap:wrap;">
+              <label for="qianlong-advice-input" style="font-size:13.5px;font-weight:800;color:#591812;">
+                步驟三：你的進諫奏摺內容（可自由修改）：
+              </label>
+              <button id="btn-cer-compose" type="button" class="tts-pill-btn" style="font-size:12px;">
+                ✍️ 依勾選合成奏摺草稿
+              </button>
+            </div>
+
             <textarea
               id="qianlong-advice-input"
               class="ask-input remonstrance-textarea"
               rows="3"
-              maxlength="280"
+              maxlength="320"
               placeholder="例如：皇上，請勿再寵信貪官和珅，應嚴懲貪污、減少南巡與軍費開支，並開墾農田照顧百姓……"
             ></textarea>
             <div class="topic-chips">${chipsHtml}</div>
@@ -971,7 +1465,18 @@ export class HudUI {
     let latestPrompt = '';
 
     const renderGeneratedPrompt = () => {
-      const result = buildQianlongGeminiPrompt(inputEl.value);
+      const probLabels = CER_PROBLEMS.filter((p) =>
+        selectedProblems.has(p.id)
+      ).map((p) => p.label);
+      const precLabels = CER_PRECEDENTS.filter((p) =>
+        selectedPrecedents.has(p.id)
+      ).map((p) => p.label);
+
+      const result = buildQianlongGeminiPrompt(inputEl.value, {
+        problemLabels: probLabels,
+        precedentLabels: precLabels
+      });
+
       if (!result.ok) {
         latestPrompt = '';
         promptArea.innerHTML = `<div class="feedback-msg error">${result.error}</div>`;
@@ -1031,6 +1536,59 @@ export class HudUI {
         });
       });
     };
+
+    this.mainLayer
+      .querySelectorAll<HTMLButtonElement>('[data-cer-prob]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const id = btn.dataset.cerProb!;
+          const opt = CER_PROBLEMS.find((p) => p.id === id);
+          if (!opt) return;
+          if (selectedProblems.has(id)) {
+            selectedProblems.delete(id);
+            btn.classList.remove('active');
+            btn.textContent = `○ ${opt.label}`;
+          } else {
+            selectedProblems.add(id);
+            btn.classList.add('active');
+            btn.textContent = `✓ ${opt.label}`;
+          }
+        });
+      });
+
+    this.mainLayer
+      .querySelectorAll<HTMLButtonElement>('[data-cer-prec]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const id = btn.dataset.cerPrec!;
+          const opt = CER_PRECEDENTS.find((p) => p.id === id);
+          if (!opt) return;
+          if (selectedPrecedents.has(id)) {
+            selectedPrecedents.delete(id);
+            btn.classList.remove('active');
+            btn.textContent = `○ ${opt.label}`;
+          } else {
+            selectedPrecedents.add(id);
+            btn.classList.add('active');
+            btn.textContent = `✓ ${opt.label}`;
+          }
+        });
+      });
+
+    this.mainLayer
+      .querySelector('#btn-cer-compose')
+      ?.addEventListener('click', () => {
+        const draft = composeCerDraft(
+          Array.from(selectedProblems),
+          Array.from(selectedPrecedents)
+        );
+        if (draft) {
+          inputEl.value = draft;
+          renderGeneratedPrompt();
+        } else {
+          promptArea.innerHTML = `<div class="feedback-msg error">請先在步驟一或步驟二點選至少一項歷史問題或治國根據！</div>`;
+        }
+      });
 
     this.mainLayer
       .querySelectorAll<HTMLButtonElement>('[data-chip-idx]')
@@ -1094,7 +1652,7 @@ export class HudUI {
     if (slot) slot.innerHTML = html;
   }
 
-  // 10. 返回現代結局與反思疊加卡牌
+  // 10. 返回現代結局與反思疊加卡牌（附領取史官證書按鈕）
   public renderEndingScreen(
     onBackTitle: () => void,
     onBackClassSelect: () => void
@@ -1114,9 +1672,10 @@ export class HudUI {
           <div class="hint-banner" style="font-size:14.5px;">${PROMPTS.ENDING_REFLECTION}</div>
           <div class="feedback-msg ok" style="font-size:14px;">${PROMPTS.ENDING_SUMMARY}</div>
           <div class="btn-row">
+            <button id="btn-end-cert" class="pixel-btn gold" type="button">🏅 領取《大清盛世史官證書》</button>
             ${
               gameState.mode === 'class'
-                ? `<button id="btn-end-class" class="pixel-btn gold" type="button">返回${MODE_CLASS_LABEL}</button>`
+                ? `<button id="btn-end-class" class="pixel-btn jade" type="button">返回${MODE_CLASS_LABEL}</button>`
                 : ''
             }
             <button id="btn-end-title" class="pixel-btn" type="button">返回標題畫面</button>
@@ -1125,6 +1684,13 @@ export class HudUI {
       </div>
     `;
 
+    this.mainLayer
+      .querySelector('#btn-end-cert')
+      ?.addEventListener('click', () => {
+        this.showCertificateModal('康雍乾三朝順序探索', () =>
+          this.renderEndingScreen(onBackTitle, onBackClassSelect)
+        );
+      });
     this.mainLayer
       .querySelector('#btn-end-class')
       ?.addEventListener('click', () => onBackClassSelect());

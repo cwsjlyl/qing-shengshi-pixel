@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
-import { enhanceAllCharacterTextures } from '../gfx/CrispVisuals';
+import { enhanceAllCharacterTexturesCached } from '../gfx/CrispVisuals';
 import { PixelArtGenerator } from '../gfx/PixelArtGenerator';
+import { extractAllCharacterPortraits } from '../ui/portraitAndCert';
 import { resolveAssetUrl } from './assetUrl';
 import { OriginalArtLoader } from './OriginalArtLoader';
 
@@ -11,11 +12,6 @@ function nextAnimationFrame(): Promise<void> {
 }
 
 export class ClassroomAssetPipeline {
-  /**
-   * 課堂多機同時載入優化：
-   * 1. 若環境支援且建置已產出無損 WebP，優先載入體積更小的 .webp 圖集
-   * 2. 若校園 Wi-Fi 瞬斷或格式受阻，自動降級回原始 .png 重試一次
-   */
   public static preloadAssets(scene: Phaser.Scene): void {
     OriginalArtLoader.preloadAssets(scene);
 
@@ -42,7 +38,7 @@ export class ClassroomAssetPipeline {
   }
 
   /**
-   * 將貼圖生成拆分為非阻塞幀間階段，並對全部角色執行 4x 高清邊緣與輪廓強化
+   * 非阻塞分幀貼圖建構 ＋ CacheStorage 角色高清貼圖快取 ＋ 對話角色半身頭像擷取
    */
   public static async buildAllTexturesStaged(
     scene: Phaser.Scene,
@@ -56,9 +52,10 @@ export class ClassroomAssetPipeline {
     await nextAnimationFrame();
     OriginalArtLoader.buildAllFromLoadedAssets(scene);
 
-    onProgress?.(0.97, '正在強化康雍乾人物高清輪廓……');
+    onProgress?.(0.97, '正在載入康雍乾人物高清輪廓與頭像……');
     await nextAnimationFrame();
-    enhanceAllCharacterTextures(scene);
+    await enhanceAllCharacterTexturesCached(scene);
+    extractAllCharacterPortraits(scene);
 
     onProgress?.(1.0, '課堂資源準備完成！');
     await nextAnimationFrame();

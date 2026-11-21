@@ -2,10 +2,6 @@ import Phaser from 'phaser';
 import './art/assetUrl';
 import './style.css';
 import { getCanvasDpr, installCrispChineseTextPatch } from './gfx/CrispVisuals';
-import { ArcheryMinigame } from './minigames/ArcheryMinigame';
-import { SouthernTourMinigame } from './minigames/SouthernTourMinigame';
-import { TalentMinigame } from './minigames/TalentMinigame';
-import { WhackMinigame } from './minigames/WhackMinigame';
 import { BootScene } from './scenes/BootScene';
 import { ClassSelectScene } from './scenes/ClassSelectScene';
 import { ExploreScene } from './scenes/ExploreScene';
@@ -37,6 +33,7 @@ function readViewportSize(): { width: number; height: number } {
 const initialSize = readViewportSize();
 const initialDpr = getCanvasDpr();
 
+// 四個小遊戲改由 lazyMinigames.ts 動態 import() 按需載入，大幅減輕 35 部 iPad 首屏下載與解析負擔
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   parent: 'game-canvas-host',
@@ -69,21 +66,12 @@ const config: Phaser.Types.Core.GameConfig = {
     TitleScene,
     OpeningScene,
     ClassSelectScene,
-    ExploreScene,
-    TalentMinigame,
-    WhackMinigame,
-    ArcheryMinigame,
-    SouthernTourMinigame
+    ExploreScene
   ]
 };
 
 const game = new Phaser.Game(config);
 
-/**
- * Always refresh cached canvasBounds (iPad Safari visualViewport can scroll /
- * offset without a size change; stale bounds make touches miss the boat).
- * Render backing buffer at Retina DPR (up to 2x) while CSS stays 100% viewport.
- */
 function syncGameToVisualViewport(): void {
   const { width, height } = readViewportSize();
   const dpr = getCanvasDpr();
@@ -92,7 +80,6 @@ function syncGameToVisualViewport(): void {
   if (game.scale.width !== targetW || game.scale.height !== targetH) {
     game.scale.resize(targetW, targetH);
   }
-  // refresh/updateBounds even when size is unchanged — syncs displayScale & page offsets
   game.scale.refresh();
 }
 
@@ -111,9 +98,7 @@ if (window.visualViewport) {
 if (window.__CLASSROOM_PROD__ && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     try {
-      navigator.serviceWorker.register('./sw.js').catch(() => {
-        // Ignore Service Worker restriction in private browsing or cross-origin iframes
-      });
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
     } catch {
       // Ignore synchronous SecurityError in restricted iframes
     }

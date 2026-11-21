@@ -21,6 +21,11 @@ export interface RemonstranceSuggestion {
   text: string;
 }
 
+export interface CerPromptContext {
+  problemLabels?: string[];
+  precedentLabels?: string[];
+}
+
 export const REMONSTRANCE_SUGGESTIONS: ReadonlyArray<RemonstranceSuggestion> = [
   {
     label: '嚴懲和珅整頓吏治',
@@ -49,15 +54,18 @@ export type BuildPromptResult =
   | { ok: false; error: string };
 
 /**
- * 將學生的進諫內容組裝為可直接複製貼上至 Gemini 的互動角色扮演與四格漫畫生成指令（Prompt）
+ * 將學生的有根有據（CER）進諫內容組裝為可直接複製貼上至 Gemini 的互動角色扮演與四格漫畫生成指令（Prompt）
  */
-export function buildQianlongGeminiPrompt(rawAdvice: string): BuildPromptResult {
+export function buildQianlongGeminiPrompt(
+  rawAdvice: string,
+  cerContext?: CerPromptContext
+): BuildPromptResult {
   const advice = rawAdvice.trim();
 
   if (!advice) {
     return {
       ok: false,
-      error: '請先輸入你想向乾隆皇帝進獻的諫言（或點選上方靈感標籤參考），再產生 Gemini 指令！'
+      error: '請先輸入你想向乾隆皇帝進獻的諫言（或先點選上方「奏摺組合器」／靈感標籤），再產生 Gemini 指令！'
     };
   }
 
@@ -68,11 +76,20 @@ export function buildQianlongGeminiPrompt(rawAdvice: string): BuildPromptResult 
     };
   }
 
+  const cerLines: string[] = [];
+  if (cerContext?.problemLabels && cerContext.problemLabels.length > 0) {
+    cerLines.push(`・學生鎖定的清朝晚年問題：${cerContext.problemLabels.join('、')}`);
+  }
+  if (cerContext?.precedentLabels && cerContext.precedentLabels.length > 0) {
+    cerLines.push(`・學生引用的歷史治國根據：${cerContext.precedentLabels.join('、')}`);
+  }
+
   const prompt = [
     '請你扮演清朝晚年時期的「乾隆皇帝」（以第一人稱「朕」自稱），使用香港繁體中文回應，語氣兼具帝王威嚴與溫和叮嚀，內容深淺適中，適合香港小學六年級常識科學生閱讀與理解。',
     '',
     '【歷史情境背景】',
     '我是一位剛完成《最後的皇朝：康雍乾盛世》探索學習的小學六年級學生，走訪了康熙（不分滿漢用人唯才）、雍正（嚴懲貪官、嚴查虧空充實國庫）與乾隆（平定準噶爾奠定版圖、六次遊江南耗費巨資、十次派兵軍費浩繁、晚年寵信貪官和珅、人口激增導致田地不足）的歷史現場。現在我向你呈上以下治國進諫：',
+    ...(cerLines.length > 0 ? ['', '【學生的史料依據】', ...cerLines] : []),
     '',
     '【學生的進諫內容】',
     `「${advice}」`,
