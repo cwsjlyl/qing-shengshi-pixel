@@ -5,6 +5,7 @@ import {
   PropStampFrame
 } from '../art/OriginalArtLoader';
 import { STAGE_NAMES, TITLE, StageId } from '../data/content';
+import { CHAR_HD_SCALE, toCssSize } from '../gfx/CrispVisuals';
 import { CHAR_IDLE_FRAME, TILE_SIZE, TileIndex } from '../gfx/PixelArtGenerator';
 import { gameState } from '../state/gameState';
 import { HudUI } from '../ui/HudUI';
@@ -13,13 +14,12 @@ import { stopOtherScenes } from './exclusiveScene';
 const SCENE_W = 576;
 
 /**
- * 標題畫面核心構圖安全範圍（由頂部描金宮匾 y=8 至殿前三位皇帝腳底漢白玉御道 y=270）：
- * 寬 356px、高 262px，確保在手機橫向（如 667×375、844×390）、直向、iPad 與電腦螢幕
- * 皆能以 1x／2x／3x 整數倍縮放完整呈現於下方選單之上，絕不裁切或遮擋角色。
+ * 標題畫面核心構圖安全範圍（由頂部描金宮匾 y=8 至殿前三位皇帝名牌 y=274）：
+ * 寬 356px、高 266px，確保在手機橫向、直向、iPad 與電腦螢幕完整呈現於下方選單之上。
  */
 const FOCAL_W = 356;
 const FOCAL_TOP_Y = 8;
-const FOCAL_BOTTOM_Y = 270;
+const FOCAL_BOTTOM_Y = 274;
 const FOCAL_H = FOCAL_BOTTOM_Y - FOCAL_TOP_Y;
 const FOCAL_CENTER_Y = Math.round((FOCAL_TOP_Y + FOCAL_BOTTOM_Y) / 2);
 
@@ -93,7 +93,7 @@ export class TitleScene extends Phaser.Scene {
       this.clouds.push(c);
     }
 
-    // 2. 廣闊宮苑地面：6 種原創灰磚變體、4 種漢白玉變體與兩側御苑草地（消除循環重複感與灰邊）
+    // 2. 廣闊宮苑地面：6 種原創灰磚變體、4 種漢白玉變體與兩側御苑草地
     for (let r = 8; r <= 33; r++) {
       const py = r * TILE_SIZE + TILE_SIZE / 2;
       for (let c = -18; c <= 41; c++) {
@@ -102,7 +102,6 @@ export class TitleScene extends Phaser.Scene {
 
         let tileFrame: number;
         if (c >= 10 && c <= 13) {
-          // 中軸漢白玉御道與丹陛雕石
           if (r >= 10 && (c === 11 || c === 12) && r % 3 === 1) {
             tileFrame =
               r % 2 === 0
@@ -112,10 +111,8 @@ export class TitleScene extends Phaser.Scene {
             tileFrame = MARBLE_PATH_VARIANTS[h % MARBLE_PATH_VARIANTS.length];
           }
         } else if (c < -6 || c > 29) {
-          // 外側御苑草地變體
           tileFrame = GARDEN_GRASS_VARIANTS[h % GARDEN_GRASS_VARIANTS.length];
         } else {
-          // 殿前廣場 6 款青灰磚變體混排
           tileFrame =
             COURTYARD_BRICK_VARIANTS[h % COURTYARD_BRICK_VARIANTS.length];
         }
@@ -124,14 +121,14 @@ export class TitleScene extends Phaser.Scene {
       }
     }
 
-    // 3. 屋簷與宮牆地面投影（增添立體層次）
+    // 3. 屋簷與宮牆地面投影
     const shadowGfx = this.add.graphics().setDepth(3);
     shadowGfx.fillStyle(0x0d0907, 0.26);
     shadowGfx.fillRect(-960, 190, SCENE_W + 1920, 12);
     shadowGfx.fillStyle(0x0d0907, 0.18);
     shadowGfx.fillRect(176, 134, 224, 10);
 
-    // 4. 立體紅牆黃瓦宮殿建築群（優先使用原創 hd_art_props 大型立體部件，避免單格重複牆）
+    // 4. 立體紅牆黃瓦宮殿建築群
     const hasHdProps = this.textures.exists(HD_PROPS_ATLAS_KEY);
 
     if (hasHdProps) {
@@ -147,18 +144,15 @@ export class TitleScene extends Phaser.Scene {
           .setDepth(depth)
           .setFlipX(flipX);
 
-      // 遠處延伸紅牆黃瓦翼牆（覆蓋超寬螢幕左右視野）
       for (const spanX of [-420, -180, 756, 996]) {
         addProp(spanX, 152, 'palace_wall_span', 5);
       }
 
-      // 左右宮牆配殿立面
       addProp(96, 158, 'palace_wing_left', 6);
       addProp(-48, 158, 'palace_wing_right', 6);
       addProp(480, 158, 'palace_wing_right', 6);
       addProp(624, 158, 'palace_wing_left', 6);
 
-      // 中央主殿朱紅牆身、雕花檻窗與正中宮門
       for (let c = 8; c <= 15; c++) {
         const px = c * TILE_SIZE + TILE_SIZE / 2;
         this.add
@@ -177,7 +171,6 @@ export class TitleScene extends Phaser.Scene {
           .setDepth(7);
       }
 
-      // 主殿漢白玉廊柱與重簷黃琉璃大屋頂
       addProp(198, 162, 'palace_pillar_a', 8);
       addProp(254, 162, 'palace_pillar_b', 8);
       addProp(322, 162, 'palace_pillar_b', 8, true);
@@ -187,7 +180,6 @@ export class TitleScene extends Phaser.Scene {
       addProp(424, 108, 'palace_side_roof', 9, true);
       addProp(SCENE_W / 2, 102, 'palace_grand_roof', 10);
 
-      // 漢白玉須彌座護欄與正中丹陛玉階
       for (let c = -16; c <= 39; c++) {
         if (c >= 10 && c <= 13) continue;
         const px = c * TILE_SIZE + TILE_SIZE / 2;
@@ -212,7 +204,6 @@ export class TitleScene extends Phaser.Scene {
         )
         .setDepth(9);
 
-      // 殿前石燈、鎏金銅香爐與分簇古樹（來自江南圖集下半部獨立樹冠）
       addProp(222, 228, 'stone_lantern_a', 13);
       addProp(354, 228, 'stone_lantern_b', 13);
       this.add
@@ -222,7 +213,6 @@ export class TitleScene extends Phaser.Scene {
         .image(380, 206, 'palace_tiles', TileIndex.BRONZE_INCENSE)
         .setDepth(12);
 
-      // 樹下陰影與分簇樹冠
       shadowGfx.fillStyle(0x0d0907, 0.24);
       shadowGfx.fillEllipse(142, 212, 46, 14);
       shadowGfx.fillEllipse(434, 212, 46, 14);
@@ -234,7 +224,6 @@ export class TitleScene extends Phaser.Scene {
       addProp(28, 194, 'tree_cluster_c', 12);
       addProp(548, 194, 'tree_cluster_d', 12);
     } else {
-      // 安全後備繪製
       for (let c = 5; c <= 18; c++) {
         const px = c * TILE_SIZE + TILE_SIZE / 2;
         this.add.image(px, 96, 'palace_tiles', TileIndex.ROOF_GOLD_RIDGE).setDepth(8);
@@ -244,16 +233,17 @@ export class TitleScene extends Phaser.Scene {
       }
     }
 
-    // 5. 殿前漢白玉御道上的康、雍、乾三朝皇帝（可點按進入該朝課堂模式）
-    const emperorY = 254;
+    // 5. 殿前漢白玉御道上的康、雍、乾三朝皇帝（4x 高清輪廓精靈 + 清晰帝號名牌）
+    const emperorY = 250;
     const emperors: Array<{
       id: StageId;
       key: string;
+      shortName: string;
       x: number;
     }> = [
-      { id: 'kangxi', key: 'char_kangxi_emperor', x: SCENE_W / 2 - 54 },
-      { id: 'yongzheng', key: 'char_yongzheng_emperor', x: SCENE_W / 2 },
-      { id: 'qianlong', key: 'char_qianlong_emperor', x: SCENE_W / 2 + 54 }
+      { id: 'kangxi', key: 'char_kangxi_emperor', shortName: '康熙', x: SCENE_W / 2 - 64 },
+      { id: 'yongzheng', key: 'char_yongzheng_emperor', shortName: '雍正', x: SCENE_W / 2 },
+      { id: 'qianlong', key: 'char_qianlong_emperor', shortName: '乾隆', x: SCENE_W / 2 + 64 }
     ];
 
     const enterClassroomStage = (stageId: StageId) => {
@@ -263,19 +253,40 @@ export class TitleScene extends Phaser.Scene {
       });
     };
 
-    // Allow taps through overlapping sprites / hit pads on iPad
     this.input.setTopOnly(false);
 
     for (const emp of emperors) {
+      shadowGfx.fillStyle(0x0d0907, 0.34);
+      shadowGfx.fillEllipse(emp.x, emperorY + 1, 28, 9);
+
       const spr = this.add
         .sprite(emp.x, emperorY, emp.key, CHAR_IDLE_FRAME.down)
         .setOrigin(0.5, 0.92)
+        .setScale(1.2 / CHAR_HD_SCALE)
         .setDepth(16);
       spr.play(`${emp.key}_down`);
 
-      // Generous rectangular hit area (not pixel-perfect) for iPad taps
+      // 腳下描金帝號名牌，讓學生一眼辨識康、雍、乾三帝
+      this.add
+        .text(emp.x, emperorY + 5, emp.shortName, {
+          fontSize: '11px',
+          color: '#ffe89e',
+          backgroundColor: 'rgba(68, 17, 12, 0.92)',
+          padding: { x: 6, y: 1.5 },
+          fontStyle: 'bold',
+          stroke: '#240905',
+          strokeThickness: 2
+        })
+        .setOrigin(0.5, 0)
+        .setDepth(18);
+
       spr.setInteractive(
-        new Phaser.Geom.Rectangle(-36, -78, 72, 90),
+        new Phaser.Geom.Rectangle(
+          -36 * CHAR_HD_SCALE,
+          -78 * CHAR_HD_SCALE,
+          72 * CHAR_HD_SCALE,
+          90 * CHAR_HD_SCALE
+        ),
         Phaser.Geom.Rectangle.Contains
       );
       spr.input!.cursor = 'pointer';
@@ -284,9 +295,8 @@ export class TitleScene extends Phaser.Scene {
         enterClassroomStage(emp.id);
       });
 
-      // Extra invisible pad covering the doll + label space
       const pad = this.add
-        .rectangle(emp.x, emperorY - 28, 78, 100, 0xffffff, 0.001)
+        .rectangle(emp.x, emperorY - 22, 82, 106, 0xffffff, 0.001)
         .setDepth(17)
         .setInteractive({ useHandCursor: true });
       pad.on('pointerdown', () => {
@@ -295,9 +305,9 @@ export class TitleScene extends Phaser.Scene {
       });
     }
 
-    // 6. 頂部描金宮匾標題（寬 348px、高 54px，確保直向窄螢幕與橫向低螢幕皆不溢出）
-    const plaqueW = 348;
-    const plaqueH = 54;
+    // 6. 頂部描金宮匾標題
+    const plaqueW = 352;
+    const plaqueH = 56;
     const plaqueX = Math.floor((SCENE_W - plaqueW) / 2);
     const plaqueY = FOCAL_TOP_Y;
 
@@ -311,26 +321,27 @@ export class TitleScene extends Phaser.Scene {
 
     this.add
       .text(SCENE_W / 2, plaqueY + 20, TITLE, {
-        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
-        fontSize: '19px',
+        fontSize: '19.5px',
         color: '#ffe89e',
         fontStyle: 'bold',
-        stroke: '#38100a',
-        strokeThickness: 3
+        stroke: '#2e0b06',
+        strokeThickness: 3.5
       })
       .setOrigin(0.5)
       .setDepth(26);
 
     this.add
-      .text(SCENE_W / 2, plaqueY + 41, '香港小學六年級常識科・單一主畫面高密度像素版', {
-        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
-        fontSize: '11.5px',
-        color: '#fff5df'
+      .text(SCENE_W / 2, plaqueY + 42, '香港小學六年級常識科・單一主畫面高密度像素版', {
+        fontSize: '12px',
+        color: '#fff8ea',
+        fontStyle: 'bold',
+        stroke: '#2b0d08',
+        strokeThickness: 2.5
       })
       .setOrigin(0.5)
       .setDepth(26);
 
-    // 7. 呼叫現有 HudUI 渲染標題選單（保持導航與流程一字不改）
+    // 7. 呼叫現有 HudUI 渲染標題選單
     const ui = this.registry.get('ui') as HudUI;
     ui.setNavigationHandlers({});
     ui.renderTitleScreen(
@@ -346,7 +357,7 @@ export class TitleScene extends Phaser.Scene {
       }
     );
 
-    // 8. 依據裝置方向與選單實際高度動態對齊視窗，徹底解決手機橫向選單遮擋殿前角色問題
+    // 8. 依據裝置方向與選單實際高度動態對齊視窗
     this.syncViewportAndTitleDock(this.scale.width, this.scale.height);
     this.rafId = window.requestAnimationFrame(() => {
       if (this.scene.isActive()) {
@@ -364,7 +375,6 @@ export class TitleScene extends Phaser.Scene {
         window.cancelAnimationFrame(this.rafId);
         this.rafId = null;
       }
-      // Drop title dock if next scene has not replaced HUD yet
       const main = document.getElementById('hud-main-layer');
       if (main?.querySelector('.title-dock')) {
         const ui = this.registry.get('ui') as HudUI;
@@ -373,11 +383,9 @@ export class TitleScene extends Phaser.Scene {
     });
   }
 
-  /**
-   * 同步調整下方選單緊湊度（僅針對低高度橫向視窗改為雙欄並排）並計算整數倍像素縮放，
-   * 將「宮匾＋重簷主殿＋殿前三位皇帝」精準置於選單上方的無遮擋可視區中央。
-   */
-  private syncViewportAndTitleDock(viewW: number, viewH: number): void {
+  private syncViewportAndTitleDock(gameW: number, gameH: number): void {
+    const { width: viewW, height: viewH, dpr } = toCssSize(gameW, gameH);
+
     const dock = document.querySelector<HTMLElement>(
       '#hud-main-layer .title-dock'
     );
@@ -390,7 +398,6 @@ export class TitleScene extends Phaser.Scene {
 
     if (dock && btnStack) {
       if (isCompactLandscape || isMediumLandscape) {
-        // 手機橫向與較矮橫向螢幕：選單按鈕改為左右並排緊湊列，大幅釋放縱向視野
         dock.style.padding = isCompactLandscape ? '6px 10px' : '9px 14px';
         dock.style.bottom = isCompactLandscape ? '6px' : '12px';
         dock.style.width = 'min(92vw, 520px)';
@@ -407,11 +414,11 @@ export class TitleScene extends Phaser.Scene {
         });
 
         if (noteEl && noteEl !== btnStack) {
-          noteEl.style.fontSize = isCompactLandscape ? '10.5px' : '11.5px';
+          noteEl.style.fontSize = isCompactLandscape ? '11.5px' : '12.5px';
+          noteEl.style.color = '#f5efe2';
           noteEl.style.display = viewH < 350 ? 'none' : 'block';
         }
       } else {
-        // 直向手機、iPad 與高螢幕電腦：維持原有預設垂直選單樣式
         dock.style.cssText = '';
         btnStack.style.cssText = '';
         buttons?.forEach((btn) => {
@@ -419,15 +426,15 @@ export class TitleScene extends Phaser.Scene {
         });
         if (noteEl && noteEl !== btnStack) {
           noteEl.style.cssText = '';
-          noteEl.style.fontSize = '12px';
-          noteEl.style.color = '#dfd4c3';
+          noteEl.style.fontSize = '13px';
+          noteEl.style.color = '#f5efe2';
+          noteEl.style.fontWeight = '700';
           noteEl.style.textAlign = 'center';
-          noteEl.style.lineHeight = '1.4';
+          noteEl.style.lineHeight = '1.45';
         }
       }
     }
 
-    // 量測下方選單實際頂端位置，計算無遮擋安全可視高度
     const dockRect = dock?.getBoundingClientRect();
     const dockTop =
       dockRect && dockRect.height > 0 ? dockRect.top : viewH - 110;
@@ -439,18 +446,17 @@ export class TitleScene extends Phaser.Scene {
     );
     const availH = safeBottom - safeTop;
 
-    // 嚴格採用整數倍像素縮放（1x / 2x / 3x），絕不使用小數縮放造成模糊
     const zoomByW = Math.floor(viewW / FOCAL_W);
     const zoomByH = Math.floor(availH / FOCAL_H);
-    const zoom = Math.max(1, Math.min(3, Math.min(zoomByW, zoomByH)));
+    const cssZoom = Math.max(1, Math.min(3, Math.min(zoomByW, zoomByH)));
 
     const safeCenterScreenY = (safeTop + safeBottom) / 2;
     const camWorldY = Math.round(
-      FOCAL_CENTER_Y + (viewH / 2 - safeCenterScreenY) / zoom
+      FOCAL_CENTER_Y + (viewH / 2 - safeCenterScreenY) / cssZoom
     );
 
     const cam = this.cameras.main;
-    cam.setZoom(zoom);
+    cam.setZoom(cssZoom * dpr);
     cam.centerOn(SCENE_W / 2, camWorldY);
   }
 

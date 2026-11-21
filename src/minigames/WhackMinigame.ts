@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { CHAR_HD_SCALE, toCssSize } from '../gfx/CrispVisuals';
 import { CHAR_IDLE_FRAME, TILE_SIZE, TileIndex } from '../gfx/PixelArtGenerator';
 import { gameState } from '../state/gameState';
 import { HudUI } from '../ui/HudUI';
@@ -47,7 +48,7 @@ export class WhackMinigame extends Phaser.Scene {
     stopOtherScenes(this);
     clearStaleTitleOrOpeningHud(this);
 
-        this.cameras.main.setBackgroundColor('#261611');
+    this.cameras.main.setBackgroundColor('#261611');
     this.input.setTopOnly(false);
     this.fitViewport(this.scale.width, this.scale.height);
 
@@ -59,7 +60,6 @@ export class WhackMinigame extends Phaser.Scene {
       this.scale.off('resize', onResize);
     });
 
-    // 宮牆琉璃瓦全幅底圖
     for (let y = -4; y < 22; y++) {
       for (let x = -6; x < 28; x++) {
         const tile =
@@ -74,22 +74,21 @@ export class WhackMinigame extends Phaser.Scene {
       }
     }
 
-    // 頂部計分牌匾
     this.add
       .rectangle(STAGE_W / 2, 28, STAGE_W - 20, 42, 0x5e1510, 0.96)
       .setStrokeStyle(2.5, 0xf0c246);
 
     this.hudText = this.add
       .text(STAGE_W / 2, 28, '', {
-        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
         fontSize: '15px',
         color: '#ffe89e',
-        fontStyle: 'bold'
+        fontStyle: 'bold',
+        stroke: '#260b06',
+        strokeThickness: 2.5
       })
       .setOrigin(0.5);
     this.refreshTopBar();
 
-    // 2x3 雕花檻窗格
     for (let r = 0; r < 2; r++) {
       for (let c = 0; c < 3; c++) {
         const cx = 108 + c * 156;
@@ -105,14 +104,13 @@ export class WhackMinigame extends Phaser.Scene {
         const popContainer = this.add.container(cx, cy + 8).setVisible(false);
         const spr = this.add
           .sprite(0, 6, 'char_corrupt_a', CHAR_IDLE_FRAME.down)
-          .setScale(1.75);
+          .setScale(1.88 / CHAR_HD_SCALE);
         const tagBg = this.add
-          .rectangle(0, -40, 116, 22, 0x8c1d18, 1)
+          .rectangle(0, -40, 120, 22, 0x8c1d18, 1)
           .setStrokeStyle(1.5, 0xffe48a);
         const tagText = this.add
           .text(0, -40, '貪官', {
-            fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
-            fontSize: '12px',
+            fontSize: '12.5px',
             color: '#ffffff',
             fontStyle: 'bold'
           })
@@ -176,12 +174,13 @@ export class WhackMinigame extends Phaser.Scene {
     });
   }
 
-  private fitViewport(w: number, h: number): void {
+  private fitViewport(gameW: number, gameH: number): void {
+    const { width: w, height: h, dpr } = toCssSize(gameW, gameH);
     const cam = this.cameras.main;
     const usableH = Math.max(250, h - 84);
     const rawZoom = Math.min(w / STAGE_W, usableH / STAGE_H);
-    const zoom = rawZoom >= 1 ? Math.max(1, Math.floor(rawZoom)) : rawZoom;
-    cam.setZoom(zoom);
+    const cssZoom = rawZoom >= 1 ? Math.max(1, Math.floor(rawZoom)) : rawZoom;
+    cam.setZoom(cssZoom * dpr);
     cam.centerOn(STAGE_W / 2, STAGE_H / 2 + 18);
   }
 
@@ -284,8 +283,7 @@ export class WhackMinigame extends Phaser.Scene {
   ): void {
     const t = this.add
       .text(x, y, msg, {
-        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
-        fontSize: '14px',
+        fontSize: '14.5px',
         color,
         fontStyle: 'bold',
         stroke: '#1f120d',
@@ -334,12 +332,13 @@ export class WhackMinigame extends Phaser.Scene {
 
     const txt = this.add
       .text(STAGE_W / 2, STAGE_H / 2 - 24, message, {
-        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
         fontSize: '16px',
         color: '#fff8e7',
         fontStyle: 'bold',
         align: 'center',
-        lineSpacing: 6
+        lineSpacing: 6,
+        stroke: '#1b0d08',
+        strokeThickness: 2.5
       })
       .setOrigin(0.5);
 
@@ -354,9 +353,8 @@ export class WhackMinigame extends Phaser.Scene {
         STAGE_H / 2 + 54,
         won ? '完成挑戰，返回大殿 ▶' : '再試一次 ↻',
         {
-          fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
           fontSize: '15px',
-          color: '#2b1808',
+          color: '#241304',
           fontStyle: 'bold'
         }
       )

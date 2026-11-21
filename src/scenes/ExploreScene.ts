@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { PROMPTS, STAGES, STAGE_NAMES, StageId } from '../data/content';
+import { CHAR_HD_SCALE, toCssSize } from '../gfx/CrispVisuals';
 import {
   CHAR_IDLE_FRAME,
   TILE_SIZE,
@@ -21,6 +22,7 @@ const COMPACT_HUD_STYLE_ID = 'explore-compact-hud-style';
 export class ExploreScene extends Phaser.Scene {
   private mapData!: StageMapData;
   private player!: Phaser.GameObjects.Sprite;
+  private playerAura!: Phaser.GameObjects.Ellipse;
   private playerDir: 'down' | 'left' | 'right' | 'up' = 'up';
   /** Sticky axis for joystick chatter around 0 so facing does not flicker. */
   private facingAxis: 'x' | 'y' = 'y';
@@ -80,7 +82,6 @@ export class ExploreScene extends Phaser.Scene {
     const shadowGraphics = this.add.graphics().setDepth(2);
     shadowGraphics.fillStyle(0x0c0705, 0.24);
 
-    // 若某格已放置原創大型石燈／帳篷立體部件，隱藏底層舊色塊圖示但保留碰撞格
     const suppressedDecoCoords = this.collectSuppressedDecoTiles(
       this.mapData.props || []
     );
@@ -116,7 +117,7 @@ export class ExploreScene extends Phaser.Scene {
       }
     }
 
-    // 2. 原創高細節大型立體部件層（hd_art_props：宮殿重簷、廊柱、石燈、江南民居、樹冠、營帳、柵欄、火砲、木船）
+    // 2. 原創高細節大型立體部件層
     this.renderOriginalMapProps(this.mapData.props || []);
 
     // 3. 乾隆關東岸雕龍御船
@@ -134,9 +135,6 @@ export class ExploreScene extends Phaser.Scene {
         Phaser.Geom.Rectangle.Contains
       );
       this.royalBoatSprite.input!.cursor = 'pointer';
-
-      // Six additional pier/escort boats are placed via stageMaps props.
-      // Main royal boat stays the large interactive boarding vessel.
 
       this.royalBoatSprite.on('pointerdown', () => {
         const ui = this.registry.get('ui') as HudUI;
@@ -161,20 +159,29 @@ export class ExploreScene extends Phaser.Scene {
       });
     }
 
-    // 4. 五類原創高細節角色精靈與頭頂互動玉牌
+    // 4. 高清輪廓角色精靈、腳下清晰中文名牌與頭頂互動玉牌
     for (const trig of this.mapData.triggers) {
       const tx = trig.tileX * TILE_SIZE + TILE_SIZE / 2;
       const ty = trig.tileY * TILE_SIZE + TILE_SIZE / 2;
 
       if (trig.spriteKey) {
+        shadowGraphics.fillStyle(0x090504, 0.34);
+        shadowGraphics.fillEllipse(tx, ty + 2, 24, 8);
+
         const facing = trig.facing || 'down';
         const frame = CHAR_IDLE_FRAME[facing];
         const npcSprite = this.add
           .sprite(tx, ty + 2, trig.spriteKey, frame)
           .setOrigin(0.5, 0.92)
+          .setScale(1.18 / CHAR_HD_SCALE)
           .setDepth(10 + trig.tileY * 0.1);
         npcSprite.setInteractive(
-          new Phaser.Geom.Rectangle(-28, -52, 56, 64),
+          new Phaser.Geom.Rectangle(
+            -28 * CHAR_HD_SCALE,
+            -52 * CHAR_HD_SCALE,
+            56 * CHAR_HD_SCALE,
+            64 * CHAR_HD_SCALE
+          ),
           Phaser.Geom.Rectangle.Contains
         );
         npcSprite.input!.cursor = 'pointer';
@@ -186,7 +193,6 @@ export class ExploreScene extends Phaser.Scene {
             !this.isDepartingCutscene &&
             this.isNearTrigger(trig, 58)
           ) {
-            // 面向前來傾談的主角後觸發對話
             npcSprite.setFrame(
               CHAR_IDLE_FRAME[this.getOppositeFacing(this.playerDir)]
             );
@@ -198,9 +204,33 @@ export class ExploreScene extends Phaser.Scene {
       if (
         trig.kind === 'npc' ||
         trig.kind === 'clue' ||
+        trig.kind === 'minigame' ||
+        trig.kind === 'exit'
+      ) {
+        // 腳下清晰繁體中文名牌，讓學生一眼看清歷史人物與挑戰點
+        const isHighlight = trig.kind === 'minigame' || trig.kind === 'exit';
+        this.add
+          .text(tx, ty + 6, trig.label, {
+            fontSize: '10px',
+            color: isHighlight ? '#ffe898' : '#fff9ec',
+            backgroundColor: isHighlight
+              ? 'rgba(92, 24, 17, 0.88)'
+              : 'rgba(24, 14, 10, 0.84)',
+            padding: { x: 4.5, y: 1.5 },
+            fontStyle: 'bold',
+            stroke: '#160b07',
+            strokeThickness: 2
+          })
+          .setOrigin(0.5, 0)
+          .setDepth(34);
+      }
+
+      if (
+        trig.kind === 'npc' ||
+        trig.kind === 'clue' ||
         trig.kind === 'minigame'
       ) {
-        const badgeOffsetY = trig.spriteKey ? -38 : -30;
+        const badgeOffsetY = trig.spriteKey ? -44 : -32;
         const badge = this.add
           .image(tx, ty + badgeOffsetY, 'npc_badge')
           .setDepth(36);
@@ -217,21 +247,24 @@ export class ExploreScene extends Phaser.Scene {
 
     this.refreshBadges();
 
-    // 5. 玩家主角精靈（原創四向走路循環，貼地陰影原點）
+    // 5. 玩家主角精靈（4x 高清精靈 + 腳下淡金定位光環，不再與背景混淆）
     const startTileX = progress.playerTileX ?? this.mapData.spawnX;
     const startTileY = progress.playerTileY ?? this.mapData.spawnY;
+    const startPx = startTileX * TILE_SIZE + TILE_SIZE / 2;
+    const startPy = startTileY * TILE_SIZE + TILE_SIZE / 2 + 2;
+
+    this.playerAura = this.add
+      .ellipse(startPx, startPy, 22, 8, 0xffe48a, 0.24)
+      .setStrokeStyle(1.5, 0xffd54f, 0.82)
+      .setDepth(9.4);
 
     this.player = this.add
-      .sprite(
-        startTileX * TILE_SIZE + TILE_SIZE / 2,
-        startTileY * TILE_SIZE + TILE_SIZE / 2 + 2,
-        'char_student',
-        CHAR_IDLE_FRAME.up
-      )
+      .sprite(startPx, startPy, 'char_student', CHAR_IDLE_FRAME.up)
       .setOrigin(0.5, 0.92)
+      .setScale(1.18 / CHAR_HD_SCALE)
       .setDepth(12);
 
-    // 6. 屋簷飛檐前景遮擋層（走入下方自動半透明；獨立樹冠如已由 hd_art_props 繪製則不重複畫色塊冠）
+    // 6. 屋簷飛檐前景遮擋層
     const treeCanopySuppression = this.collectTreeCanopySuppressedTiles(
       this.mapData.props || []
     );
@@ -256,7 +289,7 @@ export class ExploreScene extends Phaser.Scene {
 
     // 7. 地面互動光圈與目標指引金箭嘴
     this.worldTargetIndicator = this.add
-      .circle(0, 0, 13)
+      .circle(0, 0, 14)
       .setStrokeStyle(2, 0xffe48a, 0.95)
       .setDepth(4)
       .setVisible(false);
@@ -266,7 +299,7 @@ export class ExploreScene extends Phaser.Scene {
       .setDepth(45)
       .setVisible(false);
 
-    // 8. 單一主畫面整數倍像素縮放攝影機（絕不模糊）
+    // 8. Retina 整數倍像素縮放攝影機（iPad 自動採用 3x 視野，人物放大 50% 更清晰）
     const cam = this.cameras.main;
     cam.setBounds(0, 0, worldW, worldH);
     this.applyCameraIntegerZoom(this.scale.width, this.scale.height);
@@ -282,7 +315,7 @@ export class ExploreScene extends Phaser.Scene {
       this.scale.off('resize', onResize);
     });
 
-    // 9. 鍵盤輸入（WASD／方向鍵／空白鍵／Enter）
+    // 9. 鍵盤輸入
     if (this.input.keyboard) {
       this.cursors = this.input.keyboard.createCursorKeys();
       this.wasd = {
@@ -333,67 +366,58 @@ export class ExploreScene extends Phaser.Scene {
     this.refreshMinimap();
   }
 
-  /**
-   * 在不改動 HudUI.ts 原始碼的前提下，為探索畫面左上狀態卡注入響應式精簡樣式，
-   * 避免在手機橫向、直向或 iPad 佔據過大視野。
-   */
   private ensureCompactStatusCardStyle(): void {
-    if (document.getElementById(COMPACT_HUD_STYLE_ID)) return;
-    const style = document.createElement('style');
+    const existing = document.getElementById(COMPACT_HUD_STYLE_ID);
+    const style = existing || document.createElement('style');
     style.id = COMPACT_HUD_STYLE_ID;
     style.textContent = `
       .hud-status-card {
-        max-width: min(300px, calc(100vw - 160px)) !important;
-        padding: 7px 10px !important;
-        gap: 4px !important;
-        backdrop-filter: blur(3px);
-      }
-      #hud-overlay.explore-with-minimap .hud-status-card {
-        /* keep beside / below minimap from global CSS */
+        max-width: min(344px, calc(100vw - 160px)) !important;
+        padding: 8px 11px !important;
+        gap: 5px !important;
+        backdrop-filter: blur(4px);
       }
       .hud-status-card .hud-hint-line {
-        font-size: 12px !important;
-        line-height: 1.32 !important;
+        font-size: 13px !important;
+        line-height: 1.4 !important;
       }
       .hud-status-card .checklist-wrap {
         gap: 4px !important;
       }
       .hud-status-card .check-chip {
-        padding: 2px 6px !important;
-        font-size: 11px !important;
+        padding: 2px 7px !important;
+        font-size: 12px !important;
       }
       @media (max-height: 520px), (max-width: 680px) {
         .hud-status-card {
-          max-width: min(278px, calc(100vw - 108px)) !important;
-          padding: 5px 8px !important;
+          max-width: min(292px, calc(100vw - 108px)) !important;
+          padding: 6px 9px !important;
         }
         .hud-status-card .hud-stage-pill {
-          font-size: 11px !important;
+          font-size: 11.5px !important;
           padding: 1px 6px !important;
         }
         .hud-status-card .hud-zone-text {
-          font-size: 12px !important;
+          font-size: 12.5px !important;
         }
         .hud-status-card .hud-hint-line {
-          font-size: 11px !important;
+          font-size: 12px !important;
           display: -webkit-box;
           -webkit-line-clamp: 2;
           -webkit-box-orient: vertical;
           overflow: hidden;
         }
         .hud-status-card .check-chip {
-          padding: 1px 5px !important;
-          font-size: 10.5px !important;
+          padding: 1.5px 5.5px !important;
+          font-size: 11px !important;
         }
       }
     `;
-    document.head.appendChild(style);
+    if (!existing) {
+      document.head.appendChild(style);
+    }
   }
 
-  /**
-   * 當 hd_art_props 可用時，收集已被立體部件覆蓋的舊版單格燈柱／營帳／樹幹座標，
-   * 避免舊色塊在高清原創部件背後露邊，同時保留地圖碰撞。
-   */
   private collectSuppressedDecoTiles(props: MapPropPlacement[]): Set<string> {
     const set = new Set<string>();
     if (!this.textures.exists('hd_art_props')) return set;
@@ -433,9 +457,6 @@ export class ExploreScene extends Phaser.Scene {
     return set;
   }
 
-  /**
-   * 繪製來自原創 PNG（宮廷、江南下半部獨立樹與石、軍營碼頭）的高細節立體部件
-   */
   private renderOriginalMapProps(props: MapPropPlacement[]): void {
     if (!this.textures.exists('hd_art_props')) return;
     const propTex = this.textures.get('hd_art_props');
@@ -474,7 +495,6 @@ export class ExploreScene extends Phaser.Scene {
           });
         }
       } else {
-        // canopy 層：重簷大殿屋頂、江南屋舍屋頂與分簇大樹冠（玩家走入正下方時個別半透明）
         const isTree = prop.frame.startsWith('tree_cluster_');
         img
           .setOrigin(0.5, isTree ? 0.62 : 0.55)
@@ -499,10 +519,12 @@ export class ExploreScene extends Phaser.Scene {
     }
   }
 
-  private applyCameraIntegerZoom(viewW: number, viewH: number): void {
+  private applyCameraIntegerZoom(gameW: number, gameH: number): void {
+    const { width: viewW, height: viewH, dpr } = toCssSize(gameW, gameH);
     const minDim = Math.min(viewW, viewH);
-    const zoom = minDim >= 960 ? 3 : 2;
-    this.cameras.main.setZoom(zoom);
+    // 所有 iPad（短邊 >= 680px）升級為 3x 視野，人物與名牌放大 50% 且維持整數倍零接縫
+    const cssZoom = minDim >= 680 ? 3 : 2;
+    this.cameras.main.setZoom(cssZoom * dpr);
   }
 
   private renderExplorePanel(overrideHint?: string): void {
@@ -517,7 +539,6 @@ export class ExploreScene extends Phaser.Scene {
     this.refreshMinimap();
   }
 
-  /** Top-left semi-transparent virtual map: buildings, investigate targets, exits, player. */
   private refreshMinimap(): void {
     const ui = this.registry.get('ui') as HudUI;
     if (!this.mapData || !this.player) return;
@@ -602,7 +623,6 @@ export class ExploreScene extends Phaser.Scene {
   }
 
   public update(time: number, delta: number): void {
-    // 三幀原創水面波紋循環
     this.waterTimer += delta;
     if (this.waterTimer >= 420) {
       this.waterTimer = 0;
@@ -620,7 +640,6 @@ export class ExploreScene extends Phaser.Scene {
       return;
     }
 
-    // 結合左下圓形虛擬搖桿連續向量與鍵盤方向鍵
     let vx = ui.joyVector.x;
     let vy = ui.joyVector.y;
 
@@ -640,7 +659,6 @@ export class ExploreScene extends Phaser.Scene {
       this.tryMovePlayer(dx, 0);
       this.tryMovePlayer(0, dy);
 
-      // Facing hysteresis: prefer current axis until the other clearly dominates
       const ax = Math.abs(vx);
       const ay = Math.abs(vy);
       if (this.facingAxis === 'x') {
@@ -655,7 +673,6 @@ export class ExploreScene extends Phaser.Scene {
       } else if (ax > 0.08) {
         this.playerDir = vx < 0 ? 'left' : 'right';
       }
-      // Sheet already has left/right rows — never flipX at runtime
       this.player.setFlipX(false);
       this.player.play(`char_student_${this.playerDir}`, true);
     } else {
@@ -665,8 +682,8 @@ export class ExploreScene extends Phaser.Scene {
     }
 
     this.player.setDepth(10 + (this.player.y / TILE_SIZE) * 0.1);
+    this.playerAura.setPosition(this.player.x, this.player.y);
 
-    // 屋簷瓷磚層與大型立體樹冠／殿頂前景半透明偵測（不遮擋人物）
     const ptx = Math.floor(this.player.x / TILE_SIZE);
     const pty = Math.floor((this.player.y - 10) / TILE_SIZE);
     const underRoof =
@@ -840,7 +857,7 @@ export class ExploreScene extends Phaser.Scene {
     this.guideArrow.setVisible(true);
 
     if (dist < 64) {
-      this.guideArrow.setPosition(tx, ty - 42 + pulse);
+      this.guideArrow.setPosition(tx, ty - 48 + pulse);
       this.guideArrow.setRotation(0);
     } else {
       const angle = Math.atan2(ty - this.player.y, tx - this.player.x);
@@ -1070,6 +1087,7 @@ export class ExploreScene extends Phaser.Scene {
     this.isDepartingCutscene = true;
     this.guideArrow.setVisible(false);
     this.worldTargetIndicator.setVisible(false);
+    this.playerAura.setVisible(false);
 
     if (gameState.mode === 'class') {
       gameState.completedClassStages.add('qianlong');
@@ -1130,14 +1148,16 @@ export class ExploreScene extends Phaser.Scene {
 
     const END_W = 576;
     const END_H = 432;
+    const { width: w, height: h, dpr } = toCssSize(
+      this.scale.width,
+      this.scale.height
+    );
     const cam = this.cameras.main;
     cam.stopFollow();
     cam.removeBounds();
-    const rawZoom = Math.min(
-      this.scale.width / END_W,
-      this.scale.height / END_H
-    );
-    cam.setZoom(rawZoom >= 1 ? Math.max(1, Math.floor(rawZoom)) : rawZoom);
+    const rawZoom = Math.min(w / END_W, h / END_H);
+    const cssZoom = rawZoom >= 1 ? Math.max(1, Math.floor(rawZoom)) : rawZoom;
+    cam.setZoom(cssZoom * dpr);
     cam.centerOn(END_W / 2, END_H / 2 + 24);
 
     const overlay = this.add.container(0, 0).setDepth(100);
@@ -1146,7 +1166,6 @@ export class ExploreScene extends Phaser.Scene {
     bg.fillStyle(0x182233, 1);
     bg.fillRect(-600, -400, END_W + 1200, END_H + 800);
 
-    // 現代維港夜景與摩天大樓燈火（僅用於穿越返回現代結局畫面）
     const buildings = [
       [34, 130, 46, 132],
       [92, 96, 54, 166],
@@ -1184,16 +1203,17 @@ export class ExploreScene extends Phaser.Scene {
 
     const t1 = this.add
       .text(END_W / 2, 45, '已乘御船穿越時空返回現代', {
-        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
         fontSize: '21px',
         color: '#ffe89e',
-        fontStyle: 'bold'
+        fontStyle: 'bold',
+        stroke: '#2e0b06',
+        strokeThickness: 3
       })
       .setOrigin(0.5);
 
     const student = this.add
       .sprite(END_W / 2, 224, 'char_student', CHAR_IDLE_FRAME.down)
-      .setScale(2);
+      .setScale(2.2 / CHAR_HD_SCALE);
     student.play('char_student_down');
 
     overlay.add([t1, student]);

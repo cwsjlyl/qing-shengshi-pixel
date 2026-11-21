@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { MODE_CLASS_LABEL, STAGE_NAMES, StageId } from '../data/content';
+import { CHAR_HD_SCALE, toCssSize } from '../gfx/CrispVisuals';
 import { CHAR_IDLE_FRAME, TILE_SIZE, TileIndex } from '../gfx/PixelArtGenerator';
 import { gameState } from '../state/gameState';
 import { HudUI } from '../ui/HudUI';
@@ -49,10 +50,11 @@ export class ClassSelectScene extends Phaser.Scene {
 
     this.add
       .text(SCENE_W / 2, 38, `${MODE_CLASS_LABEL} — 請點選要探索的朝代`, {
-        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
         fontSize: '19px',
-        color: '#ffe48a',
-        fontStyle: 'bold'
+        color: '#ffe89e',
+        fontStyle: 'bold',
+        stroke: '#2e0b06',
+        strokeThickness: 3
       })
       .setOrigin(0.5);
 
@@ -92,7 +94,6 @@ export class ClassSelectScene extends Phaser.Scene {
       });
     };
 
-    // iPad: allow taps on overlapping card / doll hit pads
     this.input.setTopOnly(false);
 
     const cardHitBoxes: { id: StageId; cx: number; cy: number; w: number; h: number }[] =
@@ -104,25 +105,29 @@ export class ClassSelectScene extends Phaser.Scene {
       const done = gameState.completedClassStages.has(c.id);
 
       const card = this.add
-        .rectangle(cx, cy, 170, 230, c.bg, 0.96)
+        .rectangle(cx, cy, 170, 232, c.bg, 0.96)
         .setStrokeStyle(3, done ? 0x6ee6a8 : 0xe8ba4b)
         .setInteractive({ useHandCursor: true });
 
       card.on('pointerdown', () => pickStage(c.id));
 
       const emp = this.add
-        .sprite(cx, cy - 34, c.sprite, CHAR_IDLE_FRAME.down)
-        .setScale(2.2)
+        .sprite(cx, cy - 32, c.sprite, CHAR_IDLE_FRAME.down)
+        .setScale(2.36 / CHAR_HD_SCALE)
         .setDepth(5);
       emp.play(`${c.sprite}_down`);
       emp.setInteractive(
-        new Phaser.Geom.Rectangle(-40, -52, 80, 96),
+        new Phaser.Geom.Rectangle(
+          -40 * CHAR_HD_SCALE,
+          -52 * CHAR_HD_SCALE,
+          80 * CHAR_HD_SCALE,
+          96 * CHAR_HD_SCALE
+        ),
         Phaser.Geom.Rectangle.Contains
       );
       emp.input!.cursor = 'pointer';
       emp.on('pointerdown', () => pickStage(c.id));
 
-      // Extra generous pad over whole card (covers doll + labels)
       const pad = this.add
         .rectangle(cx, cy, 178, 240, 0xffffff, 0.001)
         .setDepth(6)
@@ -132,38 +137,41 @@ export class ClassSelectScene extends Phaser.Scene {
       cardHitBoxes.push({ id: c.id, cx, cy, w: 178, h: 240 });
 
       this.add
-        .text(cx, cy + 36, STAGE_NAMES[c.id], {
-          fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
-          fontSize: '14.5px',
-          color: '#fff8e7',
-          fontStyle: 'bold'
+        .text(cx, cy + 40, STAGE_NAMES[c.id], {
+          fontSize: '15px',
+          color: '#fff9ed',
+          fontStyle: 'bold',
+          stroke: '#1c100a',
+          strokeThickness: 2.5
         })
         .setOrigin(0.5)
         .setDepth(7);
 
       this.add
-        .text(cx, cy + 62, c.desc, {
-          fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
-          fontSize: '12px',
-          color: '#e8dec8'
+        .text(cx, cy + 66, c.desc, {
+          fontSize: '12.5px',
+          color: '#f5efe2',
+          fontStyle: 'bold',
+          stroke: '#1c100a',
+          strokeThickness: 2
         })
         .setOrigin(0.5)
         .setDepth(7);
 
       if (done) {
         this.add
-          .text(cx, cy + 88, '✓ 已完成本關', {
-            fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
+          .text(cx, cy + 91, '✓ 已完成本關', {
             fontSize: '13px',
             color: '#98ffd0',
-            fontStyle: 'bold'
+            fontStyle: 'bold',
+            stroke: '#123324',
+            strokeThickness: 2.5
           })
           .setOrigin(0.5)
           .setDepth(7);
       }
     });
 
-    // Robust iPad path: ignore Phaser hit-area quirks; map pointer via camera
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       const w = this.cameras.main.getWorldPoint(p.x, p.y);
       for (const box of cardHitBoxes) {
@@ -186,7 +194,6 @@ export class ClassSelectScene extends Phaser.Scene {
       () => this.scene.start('TitleScene')
     );
 
-    // Re-fit after dock HTML mounts so cards stay above the dock on iPad
     this.time.delayedCall(0, () => {
       if (this.scene.isActive()) {
         this.fitViewport(this.scale.width, this.scale.height);
@@ -194,7 +201,8 @@ export class ClassSelectScene extends Phaser.Scene {
     });
   }
 
-  private fitViewport(w: number, h: number): void {
+  private fitViewport(gameW: number, gameH: number): void {
+    const { width: w, height: h, dpr } = toCssSize(gameW, gameH);
     const cam = this.cameras.main;
     const dock = document.querySelector<HTMLElement>(
       '#hud-main-layer .class-select-dock'
@@ -206,13 +214,12 @@ export class ClassSelectScene extends Phaser.Scene {
     const availH = Math.max(180, safeBottom - 8);
 
     const rawZoom = Math.min(w / SCENE_W, availH / SCENE_H);
-    const zoom = rawZoom >= 1 ? Math.max(1, Math.floor(rawZoom)) : rawZoom;
-    cam.setZoom(zoom);
+    const cssZoom = rawZoom >= 1 ? Math.max(1, Math.floor(rawZoom)) : rawZoom;
+    cam.setZoom(cssZoom * dpr);
 
-    // Keep cards centred in the safe band above the dock
     const safeCenterScreenY = (8 + safeBottom) / 2;
     const camWorldY = Math.round(
-      SCENE_H / 2 + 8 + (h / 2 - safeCenterScreenY) / zoom
+      SCENE_H / 2 + 8 + (h / 2 - safeCenterScreenY) / cssZoom
     );
     cam.centerOn(SCENE_W / 2, camWorldY);
   }

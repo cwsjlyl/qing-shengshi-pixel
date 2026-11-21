@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { OPENING_TASK, STAGE_NAMES } from '../data/content';
+import { CHAR_HD_SCALE, toCssSize } from '../gfx/CrispVisuals';
 import { CHAR_IDLE_FRAME, TILE_SIZE, TileIndex } from '../gfx/PixelArtGenerator';
 import { gameState } from '../state/gameState';
 import { HudUI } from '../ui/HudUI';
@@ -24,7 +25,6 @@ export class OpeningScene extends Phaser.Scene {
     this.scale.on('resize', onResize);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.scale.off('resize', onResize);
-      // Never leave 「穿越清朝盛世」 over a later scene
       const main = document.getElementById('hud-main-layer');
       if (main?.querySelector('#btn-start-stage') || main?.querySelector('.dialogue-modal')) {
         const ui = this.registry.get('ui') as HudUI;
@@ -73,10 +73,10 @@ export class OpeningScene extends Phaser.Scene {
     this.add.image(384 + 2 * TILE_SIZE + 12, 218, 'palace_tiles', TileIndex.GATE_DOOR_LEFT);
     this.add.image(384 + 3 * TILE_SIZE + 12, 218, 'palace_tiles', TileIndex.GATE_DOOR_RIGHT);
 
-    // 學生穿越動畫
+    // 學生穿越動畫（4x 高清精靈）
     const traveler = this.add
       .sprite(180, 216, 'char_student', CHAR_IDLE_FRAME.right)
-      .setScale(1.5);
+      .setScale(1.72 / CHAR_HD_SCALE);
     traveler.play('char_student_right');
     this.tweens.add({
       targets: traveler,
@@ -88,16 +88,17 @@ export class OpeningScene extends Phaser.Scene {
     // 上方任務牌匾
     const banner = this.add.graphics();
     banner.fillStyle(0x6e1812, 0.95);
-    banner.fillRect(42, 20, SCENE_W - 84, 54);
+    banner.fillRect(36, 20, SCENE_W - 72, 54);
     banner.lineStyle(3, 0xe8ba4b, 1);
-    banner.strokeRect(42, 20, SCENE_W - 84, 54);
+    banner.strokeRect(36, 20, SCENE_W - 72, 54);
 
     this.add
       .text(SCENE_W / 2, 47, OPENING_TASK, {
-        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
-        fontSize: '17px',
-        color: '#fff6db',
-        fontStyle: 'bold'
+        fontSize: '17.5px',
+        color: '#fff8e7',
+        fontStyle: 'bold',
+        stroke: '#2a0b07',
+        strokeThickness: 3
       })
       .setOrigin(0.5);
 
@@ -115,11 +116,12 @@ export class OpeningScene extends Phaser.Scene {
     });
   }
 
-  private fitViewport(w: number, h: number): void {
+  private fitViewport(gameW: number, gameH: number): void {
+    const { width: w, height: h, dpr } = toCssSize(gameW, gameH);
     const cam = this.cameras.main;
     const rawZoom = Math.min(w / SCENE_W, h / SCENE_H);
-    const zoom = rawZoom >= 1 ? Math.max(1, Math.floor(rawZoom)) : rawZoom;
-    cam.setZoom(zoom);
+    const cssZoom = rawZoom >= 1 ? Math.max(1, Math.floor(rawZoom)) : rawZoom;
+    cam.setZoom(cssZoom * dpr);
     cam.centerOn(SCENE_W / 2, SCENE_H / 2 + 24);
   }
 }

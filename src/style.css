@@ -4,10 +4,10 @@
   --palace-red-dark: #681711;
   --gold-accent: #e8ba4b;
   --gold-bright: #ffe48a;
-  --jade-panel: rgba(250, 244, 231, 0.95);
-  --dark-glass: rgba(28, 17, 13, 0.82);
-  --ink-dark: #241813;
-  --ink-muted: #5c4738;
+  --jade-panel: rgba(252, 247, 237, 0.97);
+  --dark-glass: rgba(24, 14, 10, 0.9);
+  --ink-dark: #1c120d;
+  --ink-muted: #543f30;
   --jade-green: #256e54;
 }
 
@@ -27,7 +27,11 @@ body {
   overscroll-behavior: none;
   background: #140c09;
   color: var(--ink-dark);
-  font-family: 'PingFang HK', 'Microsoft JhengHei', 'Noto Sans TC', sans-serif;
+  font-family: 'PingFang HK', 'Heiti TC', 'Apple LiGothic', 'Noto Sans TC', 'Microsoft JhengHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  letter-spacing: 0.02em;
   user-select: none;
   -webkit-user-select: none;
   touch-action: none;
@@ -48,13 +52,11 @@ body {
   height: 100%;
 }
 
-/* Let Phaser Scale set canvas CSS size so touch coords match game size (iPad). */
+/* Retina HiDPI canvas: backing buffer is 2x DPR while CSS fills 100% viewport cleanly. */
 #game-canvas-host canvas {
   display: block;
-  image-rendering: -moz-crisp-edges;
-  image-rendering: -webkit-optimize-contrast;
-  image-rendering: pixelated;
-  image-rendering: crisp-edges;
+  width: 100% !important;
+  height: 100% !important;
   touch-action: none;
 }
 
@@ -87,16 +89,16 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 8px 14px;
+  padding: 8px 15px;
   border-radius: 999px;
   border: 2px solid var(--gold-accent);
-  background: rgba(38, 21, 15, 0.88);
-  color: #fff6e0;
+  background: rgba(34, 19, 13, 0.92);
+  color: #fff8e8;
   font-family: inherit;
-  font-size: 14px;
-  font-weight: 700;
+  font-size: 15px;
+  font-weight: 800;
   cursor: pointer;
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.45);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(4px);
 }
 
@@ -109,18 +111,18 @@ body {
   position: absolute;
   top: max(12px, env(safe-area-inset-top, 12px));
   left: max(12px, env(safe-area-inset-left, 12px));
-  max-width: min(72vw, 430px);
+  max-width: min(72vw, 440px);
   background: var(--dark-glass);
-  border: 1.5px solid rgba(232, 186, 75, 0.78);
+  border: 1.5px solid rgba(232, 186, 75, 0.85);
   border-radius: 10px;
-  padding: 8px 11px;
-  color: #fff7e6;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  padding: 9px 12px;
+  color: #fff9ec;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.48);
   backdrop-filter: blur(4px);
   pointer-events: none;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
 }
 
 /* 探索畫面：左上虛擬小地圖（半透明，不攔截觸控） */
@@ -156,7 +158,7 @@ body {
 /* 有小地圖時，狀態卡移到小地圖右側（寬螢幕）或下方（窄螢幕） */
 #hud-overlay.explore-with-minimap .hud-status-card {
   left: calc(max(10px, env(safe-area-inset-left, 10px)) + 148px);
-  max-width: min(48vw, 320px);
+  max-width: min(50vw, 356px);
 }
 
 @media (max-width: 720px) {
@@ -167,7 +169,7 @@ body {
   #hud-overlay.explore-with-minimap .hud-status-card {
     top: calc(max(10px, env(safe-area-inset-top, 10px)) + 98px);
     left: max(12px, env(safe-area-inset-left, 12px));
-    max-width: min(72vw, 360px);
+    max-width: min(74vw, 370px);
   }
 }
 
@@ -179,7 +181,7 @@ body {
   #hud-overlay.explore-with-minimap .hud-status-card {
     top: max(10px, env(safe-area-inset-top, 10px));
     left: calc(max(10px, env(safe-area-inset-left, 10px)) + 118px);
-    max-width: min(42vw, 280px);
+    max-width: min(44vw, 300px);
   }
 }
 
@@ -209,50 +211,52 @@ body {
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 800;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
 }
 
 .hud-stage-pill {
   background: var(--palace-red);
   border: 1px solid var(--gold-accent);
-  padding: 2px 7px;
+  padding: 2px 8px;
   border-radius: 5px;
   color: var(--gold-bright);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .hud-zone-text {
-  color: #fff8e7;
+  color: #fff9ed;
 }
 
 .hud-hint-line {
-  font-size: 12px;
-  line-height: 1.38;
-  color: #ffe8a3;
-  font-weight: 600;
+  font-size: 13.5px;
+  line-height: 1.44;
+  color: #ffefa8;
+  font-weight: 700;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
 }
 
 .checklist-wrap {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 5px;
 }
 
 .check-chip {
-  font-size: 11px;
-  padding: 2px 6px;
+  font-size: 12px;
+  padding: 2px 7px;
   border-radius: 4px;
-  border: 1px solid rgba(255, 235, 190, 0.35);
-  background: rgba(255, 255, 255, 0.1);
-  color: #dfd4c3;
-  font-weight: 600;
+  border: 1px solid rgba(255, 238, 196, 0.48);
+  background: rgba(255, 255, 255, 0.14);
+  color: #f6efe2;
+  font-weight: 700;
 }
 
 .check-chip.done {
-  border-color: #63d9a8;
-  background: rgba(37, 110, 84, 0.72);
-  color: #eafff5;
+  border-color: #6ce8b2;
+  background: rgba(34, 114, 86, 0.84);
+  color: #f2fff9;
 }
 
 /* 左下角圓形虛擬搖桿 */
@@ -287,7 +291,7 @@ body {
 
 .joystick-tick {
   position: absolute;
-  color: rgba(255, 232, 168, 0.52);
+  color: rgba(255, 232, 168, 0.58);
   font-size: 11px;
   font-weight: 800;
   pointer-events: none;
@@ -346,17 +350,17 @@ body {
 
 .hud-interact-btn {
   appearance: none;
-  min-width: 126px;
-  min-height: 82px;
+  min-width: 132px;
+  min-height: 84px;
   padding: 10px 16px;
   border-radius: 18px;
-  border: 2.5px solid rgba(232, 186, 75, 0.8);
+  border: 2.5px solid rgba(232, 186, 75, 0.85);
   background: linear-gradient(
     180deg,
-    rgba(156, 40, 32, 0.9) 0%,
-    rgba(104, 23, 17, 0.94) 100%
+    rgba(156, 40, 32, 0.92) 0%,
+    rgba(104, 23, 17, 0.96) 100%
   );
-  color: #fff8e7;
+  color: #fff9ec;
   font-family: inherit;
   cursor: pointer;
   box-shadow: 0 5px 14px rgba(0, 0, 0, 0.5);
@@ -371,7 +375,7 @@ body {
 .hud-interact-btn.ready {
   border-color: #fff0a6;
   background: linear-gradient(180deg, #f2c44e 0%, #c98c1c 100%);
-  color: #291606;
+  color: #241204;
   box-shadow: 0 0 16px rgba(255, 220, 110, 0.55), 0 5px 14px rgba(0, 0, 0, 0.5);
 }
 
@@ -380,16 +384,16 @@ body {
 }
 
 .interact-main-label {
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 800;
   line-height: 1.2;
 }
 
 .interact-sub-label {
-  font-size: 11.5px;
+  font-size: 12.5px;
   font-weight: 700;
-  opacity: 0.92;
-  max-width: 138px;
+  opacity: 0.96;
+  max-width: 146px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -399,7 +403,7 @@ body {
 .overlay-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(14, 9, 7, 0.46);
+  background: rgba(14, 9, 7, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -410,7 +414,7 @@ body {
 .overlay-bottom-wrap {
   position: absolute;
   inset: 0;
-  background: rgba(14, 9, 7, 0.22);
+  background: rgba(14, 9, 7, 0.24);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -421,13 +425,13 @@ body {
 }
 
 .card-modal {
-  width: min(100%, 540px);
+  width: min(100%, 552px);
   max-height: calc(100dvh - 78px);
   overflow-y: auto;
   background: var(--jade-panel);
   border: 3px solid #8c5e2b;
   border-radius: 12px;
-  padding: 14px 16px;
+  padding: 15px 17px;
   box-shadow: 0 0 0 2px #2b1810, 0 12px 32px rgba(0, 0, 0, 0.65);
   display: flex;
   flex-direction: column;
@@ -436,11 +440,11 @@ body {
 }
 
 .dialogue-modal {
-  width: min(100%, 660px);
-  background: rgba(252, 247, 236, 0.96);
+  width: min(100%, 672px);
+  background: rgba(253, 249, 240, 0.98);
   border: 3px solid #8c5e2b;
   border-radius: 12px;
-  padding: 14px 18px;
+  padding: 15px 18px;
   box-shadow: 0 0 0 2px #2b1810, 0 10px 28px rgba(0, 0, 0, 0.6);
   display: flex;
   flex-direction: column;
@@ -453,47 +457,48 @@ body {
   justify-content: space-between;
   gap: 8px;
   background: var(--palace-red);
-  color: #fff8e7;
-  padding: 7px 12px;
+  color: #fff9ed;
+  padding: 8px 12px;
   border: 2px solid #59140f;
   border-radius: 7px;
   font-weight: 800;
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .panel-header .badge-sub {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--gold-bright);
   font-weight: 700;
 }
 
 .panel-box {
-  background: rgba(255, 252, 245, 0.92);
+  background: rgba(255, 253, 248, 0.96);
   border: 2px solid #9e7544;
-  border-radius: 8px;\n  padding: 10px 12px;
+  border-radius: 8px;
+  padding: 11px 13px;
 }
 
 .dialogue-speaker {
   display: inline-block;
   background: var(--palace-red);
-  color: #fff8e7;
-  padding: 4px 12px;
+  color: #fff9ed;
+  padding: 4px 13px;
   border-radius: 5px;
   border: 1.5px solid #57120d;
   font-weight: 800;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .dialogue-body {
-  font-size: 16px;
-  line-height: 1.6;
-  color: var(--ink-dark);
+  font-size: 17px;
+  line-height: 1.66;
+  color: #180f0a;
   font-weight: 700;
-  background: #fffdf9;
+  background: #ffffff;
   border: 2px solid #b08854;
   border-radius: 7px;
-  padding: 12px 14px;
-  min-height: 68px;
+  padding: 13px 15px;
+  min-height: 70px;
 }
 
 /* 按鈕樣式 */
@@ -501,16 +506,16 @@ body {
   appearance: none;
   border: 2px solid #591812;
   background: linear-gradient(180deg, #b8362c 0%, #8c2119 100%);
-  color: #fff9eb;
+  color: #fffaf0;
   font-family: inherit;
-  font-size: 15px;
+  font-size: 15.5px;
   font-weight: 800;
   padding: 10px 14px;
   border-radius: 7px;
   cursor: pointer;
   box-shadow: 0 2px 0 #3d0f0b;
   text-align: center;
-  line-height: 1.3;
+  line-height: 1.32;
   touch-action: manipulation;
 }
 
@@ -532,7 +537,7 @@ body {
 .pixel-btn.gold {
   border-color: #6b4b10;
   background: linear-gradient(180deg, #f4c855 0%, #d19924 100%);
-  color: #2b1808;
+  color: #241304;
   box-shadow: 0 2px 0 #523809;
 }
 
@@ -560,37 +565,37 @@ body {
 }
 
 .hint-banner {
-  font-size: 13.5px;
-  line-height: 1.45;
-  padding: 7px 10px;
-  background: #fff3d1;
+  font-size: 14px;
+  line-height: 1.48;
+  padding: 8px 11px;
+  background: #fff4d4;
   border: 1.5px solid #c9962c;
   border-radius: 6px;
-  color: #472e08;
+  color: #3d2605;
   font-weight: 700;
 }
 
 .quiz-question {
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 800;
-  line-height: 1.5;
-  color: var(--ink-dark);
-  padding: 8px 10px;
-  background: #fff9eb;
+  line-height: 1.55;
+  color: #180f0a;
+  padding: 9px 11px;
+  background: #fffaf0;
   border-left: 4px solid var(--palace-red);
   border-radius: 4px;
 }
 
 .quiz-option {
   text-align: left;
-  font-size: 14.5px;
-  padding: 10px 12px;
+  font-size: 15px;
+  padding: 10px 13px;
 }
 
 .feedback-msg {
-  font-size: 13.5px;
+  font-size: 14px;
   font-weight: 700;
-  padding: 6px 10px;
+  padding: 7px 10px;
   border-radius: 6px;
 }
 
@@ -628,14 +633,14 @@ body {
 
 .numpad-btn {
   padding: 9px 4px;
-  font-size: 17px;
+  font-size: 18px;
 }
 
 /* 離線問乾隆輸入框 */
 .ask-input {
   width: 100%;
   font-family: inherit;
-  font-size: 15px;
+  font-size: 15.5px;
   padding: 9px 11px;
   border: 2px solid #8a6236;
   border-radius: 6px;
@@ -658,12 +663,12 @@ body {
 }
 
 .topic-chip-btn {
-  font-size: 12.5px;
-  padding: 4px 8px;
+  font-size: 13px;
+  padding: 5px 9px;
   background: #efe5cf;
   border: 1.5px solid #967346;
   border-radius: 5px;
-  color: #3d2814;
+  color: #362210;
   font-weight: 700;
   cursor: pointer;
 }
@@ -674,8 +679,8 @@ body {
   left: 50%;
   bottom: max(20px, env(safe-area-inset-bottom, 20px));
   transform: translateX(-50%);
-  width: min(92vw, 440px);
-  background: rgba(33, 19, 14, 0.88);
+  width: min(92vw, 456px);
+  background: rgba(30, 17, 12, 0.92);
   border: 2.5px solid var(--gold-accent);
   border-radius: 14px;
   padding: 14px 16px;
@@ -698,7 +703,7 @@ body {
   bottom: max(12px, env(safe-area-inset-bottom, 12px));
   transform: translateX(-50%);
   width: min(94vw, 620px);
-  background: rgba(33, 19, 14, 0.88);
+  background: rgba(30, 17, 12, 0.92);
   border: 2.5px solid var(--gold-accent);
   border-radius: 14px;
   padding: 10px 12px;
@@ -723,7 +728,7 @@ body {
   }
   .class-select-dock .pixel-btn {
     padding: 8px 10px;
-    font-size: 13.5px;
+    font-size: 14px;
   }
 }
 
@@ -745,12 +750,12 @@ body {
   left: 50%;
   bottom: max(8px, env(safe-area-inset-bottom, 8px));
   transform: translateX(-50%);
-  width: min(95vw, 760px);
-  background: rgba(28, 17, 13, 0.96);
-  border: 2px solid rgba(232, 186, 75, 0.85);
+  width: min(95vw, 768px);
+  background: rgba(24, 14, 10, 0.96);
+  border: 2px solid rgba(232, 186, 75, 0.88);
   border-radius: 12px;
-  padding: 8px 12px;
-  color: #fff6e5;
+  padding: 9px 13px;
+  color: #fff9ed;
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5);
   /* Instruction chrome must not block canvas drag/tap on iPad */
   pointer-events: none;
@@ -759,7 +764,7 @@ body {
   justify-content: space-between;
   gap: 10px;
   z-index: 22;
-  max-height: min(28vh, 120px);
+  max-height: min(28vh, 124px);
   overflow: hidden;
 }
 .minigame-bar-actions,
@@ -771,9 +776,9 @@ body {
 .minigame-bar-info {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: 12.5px;
-  line-height: 1.38;
-  font-weight: 600;
+  font-size: 13.5px;
+  line-height: 1.42;
+  font-weight: 700;
   pointer-events: none;
 }
 
@@ -784,8 +789,8 @@ body {
 }
 
 .minigame-bar-actions .pixel-btn {
-  padding: 7px 11px;
-  font-size: 13px;
+  padding: 7px 12px;
+  font-size: 13.5px;
 }
 
 /* Short landscape (iPad landscape / phone landscape): keep playfield clear */
@@ -807,7 +812,7 @@ body {
   }
   .minigame-bar-actions .pixel-btn {
     padding: 6px 10px;
-    font-size: 12px;
+    font-size: 12.5px;
   }
 }
 
@@ -833,7 +838,7 @@ body {
     margin-top: -22px;
   }
   .hud-interact-btn {
-    min-width: 112px;
+    min-width: 116px;
     min-height: 74px;
     padding: 8px 12px;
   }

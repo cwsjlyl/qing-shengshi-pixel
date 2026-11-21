@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { CHAR_HD_SCALE, toCssSize } from '../gfx/CrispVisuals';
 import { CHAR_IDLE_FRAME, TILE_SIZE, TileIndex } from '../gfx/PixelArtGenerator';
 import { bindRawPointerBridge } from '../input/rawPointerBridge';
 import { gameState } from '../state/gameState';
@@ -50,7 +51,7 @@ export class ArcheryMinigame extends Phaser.Scene {
     stopOtherScenes(this);
     clearStaleTitleOrOpeningHud(this);
 
-        this.cameras.main.setBackgroundColor('#c4a974');
+    this.cameras.main.setBackgroundColor('#c4a974');
     this.input.setTopOnly(false);
     this.fitViewport(this.scale.width, this.scale.height);
 
@@ -62,7 +63,6 @@ export class ArcheryMinigame extends Phaser.Scene {
       this.scale.off('resize', onResize);
     });
 
-    // 西北邊疆沙原與草地全幅背景
     for (let y = -4; y < 22; y++) {
       for (let x = -6; x < 28; x++) {
         const tile =
@@ -77,28 +77,26 @@ export class ArcheryMinigame extends Phaser.Scene {
       }
     }
 
-    // 雙格清軍大帳點綴
     this.add.image(36, 76, 'palace_tiles', TileIndex.ARMY_TENT_LEFT).setScale(1.4);
     this.add.image(70, 76, 'palace_tiles', TileIndex.ARMY_TENT_RIGHT).setScale(1.4);
     this.add.image(458, 76, 'palace_tiles', TileIndex.ARMY_TENT_LEFT).setScale(1.4);
     this.add.image(492, 76, 'palace_tiles', TileIndex.ARMY_TENT_RIGHT).setScale(1.4);
 
-    // 頂部計分牌匾
     this.add
       .rectangle(STAGE_W / 2, 26, STAGE_W - 20, 38, 0x5e1510, 0.96)
       .setStrokeStyle(2.5, 0xf0c246);
 
     this.hudText = this.add
       .text(STAGE_W / 2, 26, '', {
-        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
         fontSize: '15px',
         color: '#ffe89e',
-        fontStyle: 'bold'
+        fontStyle: 'bold',
+        stroke: '#260b06',
+        strokeThickness: 2.5
       })
       .setOrigin(0.5);
     this.updateHud();
 
-    // 三條移動標靶橫道
     const lanes = [
       { y: 102, speed: 98 },
       { y: 168, speed: -124 },
@@ -109,10 +107,10 @@ export class ArcheryMinigame extends Phaser.Scene {
       this.spawnTargetAt(340 - i * 90, ln.y, ln.speed);
     });
 
-    // 底部清兵射手與雕弓瞄準器
+    // 底部清兵射手（4x 高清輪廓精靈）與雕弓瞄準器
     this.add
       .sprite(STAGE_W / 2, 364, 'char_qing_soldier', CHAR_IDLE_FRAME.up)
-      .setScale(1.7);
+      .setScale(1.85 / CHAR_HD_SCALE);
 
     this.bowContainer = this.add.container(STAGE_W / 2, 338).setDepth(25);
     const bowArc = this.add.graphics();
@@ -126,7 +124,6 @@ export class ArcheryMinigame extends Phaser.Scene {
     const guideDot = this.add.rectangle(0, -30, 4, 15, 0xffe48a, 1);
     this.bowContainer.add([bowArc, guideDot]);
 
-    // Large soldier / bow hit pad — tap here fires FORWARD (straight up)
     const soldierPad = this.add
       .rectangle(STAGE_W / 2, 358, 140, 100, 0xffffff, 0.001)
       .setDepth(24);
@@ -139,7 +136,6 @@ export class ArcheryMinigame extends Phaser.Scene {
       return Math.hypot(wx - sx, wy - sy) <= SOLDIER_HIT_R || wy >= 320;
     };
 
-    // Raw window-capture touch/pointer (fresh client→world; iPad Safari-safe)
     bindRawPointerBridge(this, {
       onDown: (wx, wy) => {
         if (this.ended) return;
@@ -147,13 +143,11 @@ export class ArcheryMinigame extends Phaser.Scene {
         if (tapped) {
           this.aimAtPoint(tapped.container.x, tapped.container.y);
         } else if (isOnSoldier(wx, wy)) {
-          // 李主任：點士兵便向前發射
           this.aimAngle = -Math.PI / 2;
           this.bowContainer.setRotation(this.aimAngle + Math.PI / 2);
         } else if (wy < 320) {
           this.aimAtPoint(wx, wy);
         } else {
-          // Bottom chrome / empty lower area → still fire forward
           this.aimAngle = -Math.PI / 2;
           this.bowContainer.setRotation(this.aimAngle + Math.PI / 2);
         }
@@ -187,12 +181,13 @@ export class ArcheryMinigame extends Phaser.Scene {
     });
   }
 
-  private fitViewport(w: number, h: number): void {
+  private fitViewport(gameW: number, gameH: number): void {
+    const { width: w, height: h, dpr } = toCssSize(gameW, gameH);
     const cam = this.cameras.main;
     const usableH = Math.max(250, h - 84);
     const rawZoom = Math.min(w / STAGE_W, usableH / STAGE_H);
-    const zoom = rawZoom >= 1 ? Math.max(1, Math.floor(rawZoom)) : rawZoom;
-    cam.setZoom(zoom);
+    const cssZoom = rawZoom >= 1 ? Math.max(1, Math.floor(rawZoom)) : rawZoom;
+    cam.setZoom(cssZoom * dpr);
     cam.centerOn(STAGE_W / 2, STAGE_H / 2 + 18);
   }
 
@@ -202,15 +197,14 @@ export class ArcheryMinigame extends Phaser.Scene {
       .image(0, 0, 'palace_tiles', TileIndex.ARCHERY_TARGET)
       .setScale(1.65);
     const label = this.add
-      .text(0, -24, '叛軍標靶', {
-        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
-        fontSize: '11px',
-        color: '#fff8e7',
+      .text(0, -25, '叛軍標靶', {
+        fontSize: '11.5px',
+        color: '#fff9ed',
         backgroundColor: '#7a1c14',
-        padding: { x: 4, y: 1 }
+        padding: { x: 5, y: 1.5 },
+        fontStyle: 'bold'
       })
       .setOrigin(0.5);
-    // Large invisible pad — whole soldier/target is tappable on iPad
     const pad = this.add.rectangle(0, 0, 100, 92, 0xffffff, 0.001);
     c.add([shield, label, pad]);
     c.setInteractive(
@@ -218,7 +212,6 @@ export class ArcheryMinigame extends Phaser.Scene {
       Phaser.Geom.Rectangle.Contains
     );
     if (c.input) c.input.cursor = 'pointer';
-    // Firing is handled by rawPointerBridge + findTargetAt (avoids double-shot)
 
     this.targets.push({
       container: c,
@@ -355,7 +348,6 @@ export class ArcheryMinigame extends Phaser.Scene {
 
     const hitText = this.add
       .text(target.container.x, target.container.y, '命中！', {
-        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
         fontSize: '15px',
         color: '#ffe48a',
         fontStyle: 'bold',
@@ -420,12 +412,13 @@ export class ArcheryMinigame extends Phaser.Scene {
 
     const txt = this.add
       .text(STAGE_W / 2, STAGE_H / 2 - 24, msg, {
-        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
-        fontSize: '15px',
+        fontSize: '15.5px',
         color: '#fff8e7',
         fontStyle: 'bold',
         align: 'center',
-        lineSpacing: 6
+        lineSpacing: 6,
+        stroke: '#1b0d08',
+        strokeThickness: 2.5
       })
       .setOrigin(0.5);
 
@@ -440,9 +433,8 @@ export class ArcheryMinigame extends Phaser.Scene {
         STAGE_H / 2 + 54,
         won ? '完成挑戰，返回戶外 ▶' : '重新挑戰 ↻',
         {
-          fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
           fontSize: '15px',
-          color: '#2b1808',
+          color: '#241304',
           fontStyle: 'bold'
         }
       )

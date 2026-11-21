@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { ClassroomAssetPipeline } from '../art/ClassroomAssetPipeline';
 import { TITLE } from '../data/content';
+import { toCssSize } from '../gfx/CrispVisuals';
 import { HudUI } from '../ui/HudUI';
 
 export class PreloadScene extends Phaser.Scene {
@@ -19,31 +20,34 @@ export class PreloadScene extends Phaser.Scene {
     ui.clearMainOverlay();
     ui.setNavigationHandlers({});
 
-    const { width, height } = this.scale;
+    const { width, height, dpr } = toCssSize(this.scale.width, this.scale.height);
     this.cameras.main.setBackgroundColor('#1e120d');
+    this.cameras.main.setZoom(dpr);
+    this.cameras.main.centerOn(width / 2, height / 2);
 
     const cx = Math.floor(width / 2);
     const cy = Math.floor(height / 2);
-    const cardW = Math.min(380, Math.max(290, width - 32));
+    const cardW = Math.min(392, Math.max(296, width - 32));
 
     this.add
-      .rectangle(cx, cy, cardW, 112, 0x3b2017, 1)
+      .rectangle(cx, cy, cardW, 116, 0x3b2017, 1)
       .setStrokeStyle(3, 0xe8ba4b);
 
     this.add
-      .text(cx, cy - 26, TITLE, {
-        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
-        fontSize: '19px',
+      .text(cx, cy - 27, TITLE, {
+        fontSize: '20px',
         color: '#ffe48a',
-        fontStyle: 'bold'
+        fontStyle: 'bold',
+        stroke: '#260d08',
+        strokeThickness: 2.5
       })
       .setOrigin(0.5);
 
     this.statusText = this.add
       .text(cx, cy + 4, '正在載入課堂像素圖集…… 0%', {
-        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
-        fontSize: '13.5px',
-        color: '#f5efe2'
+        fontSize: '14px',
+        color: '#fff8ec',
+        fontStyle: 'bold'
       })
       .setOrigin(0.5);
 
@@ -51,11 +55,11 @@ export class PreloadScene extends Phaser.Scene {
     this.barInnerWidth = barW - 4;
 
     this.add
-      .rectangle(cx, cy + 34, barW, 10, 0x22110c, 1)
+      .rectangle(cx, cy + 35, barW, 10, 0x22110c, 1)
       .setStrokeStyle(1, 0x9e7b36);
 
     this.progressFill = this.add
-      .rectangle(cx - barW / 2 + 2, cy + 34, 4, 6, 0xf2c138, 1)
+      .rectangle(cx - barW / 2 + 2, cy + 35, 4, 6, 0xf2c138, 1)
       .setOrigin(0, 0.5);
 
     this.load.on('progress', (val: number) => {
