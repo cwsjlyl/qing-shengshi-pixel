@@ -904,7 +904,7 @@ export class HudUI {
   /**
    * 向乾隆皇帝進諫面板：
    * 乾隆不會直接回答，而是根據學生輸入的進諫內容產生一段可複製貼到 Gemini 的專屬 Prompt，
-   * 讓 Gemini 以乾隆皇帝身份回應學生的進諫，並推演對清朝導致的後果。
+   * 讓 Gemini 以乾隆皇帝身份回應學生的進諫、推演對清朝導致的後果，並生成四格漫畫圖像。
    */
   public showQianlongRemonstrancePanel(opts: {
     entrySource: 'sequential' | 'title';
@@ -929,10 +929,10 @@ export class HudUI {
         <div class="card-modal" style="max-width:580px;">
           <div class="panel-header">
             <span>向乾隆皇帝進諫</span>
-            <span class="badge-sub">生成 Gemini 指令</span>
+            <span class="badge-sub">生成 Gemini 指令＋四格漫畫</span>
           </div>
           <div class="hint-banner">
-            請寫下你想向乾隆皇帝進獻的治國諫言（乾隆不會在此直接回答，系統會輸出專屬 Prompt，讓你一鍵複製貼到學生的 Gemini，由 Gemini 以乾隆身份回應並推演對清朝導致的後果！）
+            請寫下你想向乾隆皇帝進獻的治國諫言（乾隆不會在此直接回答，系統會輸出專屬 Prompt，讓你一鍵複製貼到 Gemini，由 Gemini 以乾隆身份回應、推演清朝後果，並自動繪製「四格漫畫圖像」！）
           </div>
           <div class="panel-box" style="display:flex;flex-direction:column;gap:8px;">
             <label for="qianlong-advice-input" style="font-size:14px;font-weight:800;color:#591812;">
@@ -947,7 +947,7 @@ export class HudUI {
             ></textarea>
             <div class="topic-chips">${chipsHtml}</div>
             <button id="btn-gen-prompt" class="pixel-btn gold" type="button">
-              生成 Gemini 進諫 Prompt
+              生成 Gemini 進諫 Prompt（含四格漫畫）
             </button>
           </div>
           <div id="qianlong-prompt-area"></div>
@@ -982,17 +982,17 @@ export class HudUI {
       promptArea.innerHTML = `
         <div class="panel-box" style="display:flex;flex-direction:column;gap:8px;background:#fffaf0;">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
-            <span style="font-size:14px;font-weight:800;color:#245943;">✓ 已生成專屬 Gemini Prompt：</span>
+            <span style="font-size:14px;font-weight:800;color:#245943;">✓ 已生成專屬 Gemini Prompt（含四格漫畫指令）：</span>
             <span style="font-size:12px;font-weight:700;color:#6b5239;">複製後請直接貼到 Gemini 發送</span>
           </div>
           <textarea
             id="gemini-prompt-output"
             class="ask-input prompt-output-box"
-            rows="5"
+            rows="6"
             readonly
           ></textarea>
           <button id="btn-copy-prompt" class="pixel-btn jade" type="button">
-            📋 複製 Prompt（直接貼到 Gemini）
+            📋 複製 Prompt（直接貼到 Gemini 生成回應與四格漫畫）
           </button>
           <div id="copy-status-banner" style="display:none;"></div>
         </div>
@@ -1017,7 +1017,7 @@ export class HudUI {
             copyBtn.textContent = '✓ 已複製 Prompt！可再次點按複製';
             statusBanner.className = 'feedback-msg ok';
             statusBanner.textContent =
-              '已成功複製到剪貼簿！現在請開啟你的 Gemini 貼上（Paste）並發送，查看乾隆皇帝的回應與清朝國運後果！';
+              '已成功複製到剪貼簿！現在請開啟你的 Gemini 貼上（Paste）並發送，即可查看乾隆皇帝的御批回應、清朝國運後果與「四格漫畫圖像」！';
             if (opts.entrySource === 'sequential') {
               finishBtn.className = 'pixel-btn gold';
             }
