@@ -33,6 +33,7 @@ export const TITLE = '最後的皇朝：康雍乾盛世';
 
 export const MODE_SEQUENTIAL_LABEL = '由康熙順序探索';
 export const MODE_CLASS_LABEL = '課堂分關';
+export const MODE_REMONSTRATE_LABEL = '向乾隆進諫';
 
 export const OPENING_BLURB =
   '你將由現代返回清朝，走進康雍乾盛世，蒐集證據，思考國勢由盛轉衰。';
@@ -54,18 +55,19 @@ export const PROMPTS = {
   QUIZ_PASSED: '答對了！請在出口輸入密碼，繼續行程。',
   QIANLONG_AFTER_789_ARROW:
     '密碼正確。請跟著箭嘴再找乾隆皇帝，聽取最後挑戰的指示。',
-  FIND_QIANLONG_AGAIN: '請再找乾隆皇帝，聽取老師最後挑戰的指示。',
+  FIND_QIANLONG_AGAIN: '請再找乾隆皇帝，準備向乾隆進諫。',
   QIANLONG_WAIT_TEACHER:
-    '證據與題目都完成了。請等待老師的指示，作最後的挑戰；之後你便可以返回現代。',
+    '證據與題目都完成了。請等待老師的指示輸入最後密碼，向朕進獻治國諫言；之後你便可以返回現代。',
   TEACHER_PASSWORD_HINT:
-    '這是老師提供的最後密碼。答對後便可向乾隆提出最後一問。',
+    '這是老師提供的最後密碼。答對後便可向乾隆皇帝進諫。',
   QIANLONG_FINAL_ASK_LINE:
-    '你有什麼問題想最後問我的？當我回答後，你便可以返回現代。',
-  ASK_QIANLONG_HUD: '請向乾隆提出最後一問；回答後便可返回現代。',
+    '你走訪了康熙、雍正與朕三朝，見證了盛世與晚年隱憂。請寫下你想向朕進獻的諫言，系統會為你輸出專屬 Prompt，讓你複製貼到 Gemini 查看朕的回應及對清朝導致的後果！',
+  ASK_QIANLONG_HUD: '請向乾隆皇帝進諫並複製 Gemini 指令；完成後便可返回現代。',
   CLASS_STAGE_DONE: '本關完成。請返回課堂分關，準備用證據教組員。',
   ENDING_RETURNED:
     '你已返回現代。回想剛才的證據：早期康雍乾治國有方，國勢強盛；乾隆晚年國勢轉弱。',
-  ENDING_REFLECTION: '你會向乾隆進甚麼諫言？',
+  ENDING_REFLECTION:
+    '請將剛才複製的「向乾隆進諫 Prompt」貼到你的 Gemini，看看乾隆皇帝如何回應你的進諫，以及令清朝導致甚麼後果！',
   ENDING_SUMMARY:
     '本課小結：早期康熙、雍正、乾隆治國有方，國勢強盛；乾隆晚年國勢轉弱。',
   CONTROLS_GUIDE:

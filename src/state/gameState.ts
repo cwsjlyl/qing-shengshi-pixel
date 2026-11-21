@@ -68,6 +68,18 @@ class GameStateManager {
     this.progressMap[stage] = this.createFreshStageProgress();
   }
 
+  /**
+   * 僅限「由康熙順序探索」模式且依序完成康熙、雍正、乾隆三個皇帝關卡後，才進入向乾隆進諫環節
+   */
+  public shouldEnterQianlongRemonstrance(): boolean {
+    return (
+      this.mode === 'sequential' &&
+      this.progressMap.kangxi.passwordPassed &&
+      this.progressMap.yongzheng.passwordPassed &&
+      this.progressMap.qianlong.passwordPassed
+    );
+  }
+
   public getStageProgress(stage: StageId = this.currentStage): StageProgress {
     return this.progressMap[stage];
   }
