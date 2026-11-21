@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
-import { MODE_CLASS_LABEL, STAGE_NAMES, StageId } from '../data/content';
+import { MODE_CLASS_LABEL, STAGES, STAGE_NAMES, StageId } from '../data/content';
 import { CHAR_HD_SCALE, toCssSize } from '../gfx/CrispVisuals';
 import { CHAR_IDLE_FRAME, TILE_SIZE, TileIndex } from '../gfx/PixelArtGenerator';
-import { gameState } from '../state/gameState';
+import { MEDAL_LABELS, gameState } from '../state/gameState';
 import { HudUI } from '../ui/HudUI';
 import { stopOtherScenes } from './exclusiveScene';
 
@@ -29,34 +29,44 @@ export class ClassSelectScene extends Phaser.Scene {
     });
 
     // 宮廷金磚暗紋底圖
+    const bgRt = this.add
+      .renderTexture(-6 * TILE_SIZE, -4 * TILE_SIZE, 36 * TILE_SIZE, 26 * TILE_SIZE)
+      .setOrigin(0, 0)
+      .setAlpha(0.38);
+    bgRt.beginDraw();
     for (let y = -4; y < 22; y++) {
       for (let x = -6; x < 30; x++) {
-        this.add
-          .image(
-            x * TILE_SIZE + 12,
-            y * TILE_SIZE + 12,
-            'palace_tiles',
-            (x + y) % 2 === 0
-              ? TileIndex.HALL_GOLD_BRICK_A
-              : TileIndex.HALL_GOLD_BRICK_B
-          )
-          .setAlpha(0.38);
+        bgRt.batchDrawFrame(
+          'palace_tiles',
+          (x + y) % 2 === 0
+            ? TileIndex.HALL_GOLD_BRICK_A
+            : TileIndex.HALL_GOLD_BRICK_B,
+          (x + 6) * TILE_SIZE,
+          (y + 4) * TILE_SIZE
+        );
       }
     }
+    bgRt.endDraw();
 
     this.add
-      .rectangle(SCENE_W / 2, 38, SCENE_W - 96, 46, 0x731912, 0.96)
+      .rectangle(SCENE_W / 2, 38, SCENE_W - 84, 46, 0x731912, 0.96)
       .setStrokeStyle(3, 0xe8ba4b);
 
+    const headerTitle = gameState.isAllClassStagesCompleted()
+      ? `${MODE_CLASS_LABEL} — 三朝全通關！可於下方領取史官證書`
+      : `${MODE_CLASS_LABEL} — 請點選要探索的朝代`;
+
     this.add
-      .text(SCENE_W / 2, 38, `${MODE_CLASS_LABEL} — 請點選要探索的朝代`, {
-        fontSize: '19px',
+      .text(SCENE_W / 2, 38, headerTitle, {
+        fontSize: '18px',
         color: '#ffe89e',
         fontStyle: 'bold',
         stroke: '#2e0b06',
         strokeThickness: 3
       })
       .setOrigin(0.5);
+
+    const ui = this.registry.get('ui') as HudUI;
 
     const cards: {
       id: StageId;
@@ -86,7 +96,7 @@ export class ClassSelectScene extends Phaser.Scene {
 
     let picking = false;
     const pickStage = (stageId: StageId) => {
-      if (picking) return;
+      if (picking || ui.isModalOpen) return;
       picking = true;
       gameState.selectClassStage(stageId);
       this.scene.start('OpeningScene', {
@@ -105,14 +115,14 @@ export class ClassSelectScene extends Phaser.Scene {
       const done = gameState.completedClassStages.has(c.id);
 
       const card = this.add
-        .rectangle(cx, cy, 170, 232, c.bg, 0.96)
+        .rectangle(cx, cy, 170, 236, c.bg, 0.96)
         .setStrokeStyle(3, done ? 0x6ee6a8 : 0xe8ba4b)
         .setInteractive({ useHandCursor: true });
 
       card.on('pointerdown', () => pickStage(c.id));
 
       const emp = this.add
-        .sprite(cx, cy - 32, c.sprite, CHAR_IDLE_FRAME.down)
+        .sprite(cx, cy - 34, c.sprite, CHAR_IDLE_FRAME.down)
         .setScale(2.36 / CHAR_HD_SCALE)
         .setDepth(5);
       emp.play(`${c.sprite}_down`);
@@ -137,7 +147,7 @@ export class ClassSelectScene extends Phaser.Scene {
       cardHitBoxes.push({ id: c.id, cx, cy, w: 178, h: 240 });
 
       this.add
-        .text(cx, cy + 40, STAGE_NAMES[c.id], {
+        .text(cx, cy + 38, STAGE_NAMES[c.id], {
           fontSize: '15px',
           color: '#fff9ed',
           fontStyle: 'bold',
@@ -148,7 +158,7 @@ export class ClassSelectScene extends Phaser.Scene {
         .setDepth(7);
 
       this.add
-        .text(cx, cy + 66, c.desc, {
+        .text(cx, cy + 63, c.desc, {
           fontSize: '12.5px',
           color: '#f5efe2',
           fontStyle: 'bold',
@@ -158,10 +168,13 @@ export class ClassSelectScene extends Phaser.Scene {
         .setOrigin(0.5)
         .setDepth(7);
 
+      const firstMgId = STAGES[c.id].minigames[0]?.id;
+      const medal = firstMgId ? gameState.minigameMedals[firstMgId] : undefined;
+
       if (done) {
         this.add
-          .text(cx, cy + 91, '✓ 已完成本關', {
-            fontSize: '13px',
+          .text(cx, cy + 90, medal ? `✓ ${MEDAL_LABELS[medal]}` : '✓ 已完成本關', {
+            fontSize: '12px',
             color: '#98ffd0',
             fontStyle: 'bold',
             stroke: '#123324',
@@ -169,10 +182,22 @@ export class ClassSelectScene extends Phaser.Scene {
           })
           .setOrigin(0.5)
           .setDepth(7);
+      } else if (medal) {
+        this.add
+          .text(cx, cy + 90, MEDAL_LABELS[medal], {
+            fontSize: '11.5px',
+            color: '#ffe48a',
+            fontStyle: 'bold',
+            stroke: '#241508',
+            strokeThickness: 2
+          })
+          .setOrigin(0.5)
+          .setDepth(7);
       }
     });
 
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      if (ui.isModalOpen) return;
       const w = this.cameras.main.getWorldPoint(p.x, p.y);
       for (const box of cardHitBoxes) {
         if (
@@ -185,9 +210,9 @@ export class ClassSelectScene extends Phaser.Scene {
       }
     });
 
-    const ui = this.registry.get('ui') as HudUI;
     ui.setNavigationHandlers({
-      onGoTitle: () => this.scene.start('TitleScene')
+      onGoTitle: () => this.scene.start('TitleScene'),
+      onResetSave: () => this.scene.restart()
     });
     ui.renderClassSelectScreen(
       (stageId) => pickStage(stageId),

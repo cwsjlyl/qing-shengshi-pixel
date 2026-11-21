@@ -15,14 +15,31 @@ import {
 import { gameState } from '../state/gameState';
 import { HudUI } from '../ui/HudUI';
 import { stopOtherScenes } from './exclusiveScene';
+import { launchMinigameScene } from './lazyMinigames';
 
 const WATER_FRAMES = [TileIndex.WATER_1, TileIndex.WATER_2, TileIndex.WATER_3];
 const COMPACT_HUD_STYLE_ID = 'explore-compact-hud-style';
+
+interface AmbientMote {
+  dot: Phaser.GameObjects.Ellipse;
+  vx: number;
+  vy: number;
+  phase: number;
+}
+
+interface TapWalkTarget {
+  x: number;
+  y: number;
+  pendingTrigger?: MapTrigger;
+  stuckMs: number;
+}
 
 export class ExploreScene extends Phaser.Scene {
   private mapData!: StageMapData;
   private player!: Phaser.GameObjects.Sprite;
   private playerAura!: Phaser.GameObjects.Ellipse;
+  private tapTargetRing!: Phaser.GameObjects.Arc;
+  private walkTarget: TapWalkTarget | null = null;
   private playerDir: 'down' | 'left' | 'right' | 'up' = 'up';
   private facingAxis: 'x' | 'y' = 'y';
   private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -38,6 +55,7 @@ export class ExploreScene extends Phaser.Scene {
   private waterTiles: Phaser.GameObjects.Image[] = [];
   private waterFrameIdx = 0;
   private waterTimer = 0;
+  private ambientMotes: AmbientMote[] = [];
 
   private roofContainer!: Phaser.GameObjects.Container;
   private canopyPropSprites: Phaser.GameObjects.Image[] = [];
@@ -62,6 +80,8 @@ export class ExploreScene extends Phaser.Scene {
     this.isDepartingCutscene = false;
     this.waterTiles = [];
     this.canopyPropSprites = [];
+    this.ambientMotes = [];
+    this.walkTarget = null;
     this.waterFrameIdx = 0;
     this.waterTimer = 0;
     this.npcBadges.clear();
@@ -77,7 +97,15 @@ export class ExploreScene extends Phaser.Scene {
     this.cameras.main.setRoundPixels(true);
     this.input.setTopOnly(false);
 
-    // 1. 原創多變體地面層、建築投影陰影層與基礎瓷磚裝飾層
+    // 1. 靜態地面與裝飾磚烘焙為 RenderTexture（減少逾 85% WebGL 繪圖呼叫，降低 iPad 發熱）
+    const groundRt = this.add
+      .renderTexture(0, 0, worldW, worldH)
+      .setOrigin(0, 0)
+      .setDepth(1);
+    const decoRt = this.add
+      .renderTexture(0, 0, worldW, worldH)
+      .setOrigin(0, 0)
+      .setDepth(5);
     const shadowGraphics = this.add.graphics().setDepth(2);
     shadowGraphics.fillStyle(0x0c0705, 0.24);
 
@@ -85,39 +113,41 @@ export class ExploreScene extends Phaser.Scene {
       this.mapData.props || []
     );
 
+    groundRt.beginDraw();
+    decoRt.beginDraw();
     for (let y = 0; y < this.mapData.rows; y++) {
       for (let x = 0; x < this.mapData.cols; x++) {
         const gIdx = this.mapData.ground[y][x];
-        const px = x * TILE_SIZE + TILE_SIZE / 2;
-        const py = y * TILE_SIZE + TILE_SIZE / 2;
+        const drawX = x * TILE_SIZE;
+        const drawY = y * TILE_SIZE;
 
-        const gImg = this.add
-          .image(px, py, 'palace_tiles', gIdx)
-          .setDepth(1);
         if (gIdx === TileIndex.WATER_1) {
+          const gImg = this.add
+            .image(drawX + TILE_SIZE / 2, drawY + TILE_SIZE / 2, 'palace_tiles', gIdx)
+            .setDepth(1.2);
           this.waterTiles.push(gImg);
+        } else {
+          groundRt.batchDrawFrame('palace_tiles', gIdx, drawX, drawY);
         }
 
         if (this.mapData.shadow[y][x]) {
-          shadowGraphics.fillRect(
-            x * TILE_SIZE,
-            y * TILE_SIZE,
-            TILE_SIZE,
-            TILE_SIZE
-          );
+          shadowGraphics.fillRect(drawX, drawY, TILE_SIZE, TILE_SIZE);
         }
 
         const dIdx = this.mapData.deco[y][x];
         if (dIdx !== TileIndex.EMPTY && !suppressedDecoCoords.has(`${x},${y}`)) {
-          this.add
-            .image(px, py, 'palace_tiles', dIdx)
-            .setDepth(5 + y * 0.02);
+          decoRt.batchDrawFrame('palace_tiles', dIdx, drawX, drawY);
         }
       }
     }
+    groundRt.endDraw();
+    decoRt.endDraw();
 
     // 2. 原創高細節大型立體部件層
     this.renderOriginalMapProps(this.mapData.props || []);
+
+    // 2b. 三朝專屬環境氛圍光暈與動態微粒子（康熙落花、雍正宮燈暖光、乾隆旱塵與柳絮）
+    this.setupDynastyAtmosphere(stageId, worldW, worldH);
 
     // 3. 乾隆關東岸雕龍御船
     this.royalBoatSprite = null;
@@ -138,13 +168,17 @@ export class ExploreScene extends Phaser.Scene {
       this.royalBoatSprite.on('pointerdown', () => {
         const ui = this.registry.get('ui') as HudUI;
         const exitTrig = this.mapData.triggers.find((t) => t.kind === 'exit');
-        if (
-          !ui.isModalOpen &&
-          !this.isDepartingCutscene &&
-          exitTrig &&
-          this.isNearTrigger(exitTrig, 68)
-        ) {
-          this.handleTriggerAction(exitTrig);
+        if (!ui.isModalOpen && !this.isDepartingCutscene && exitTrig) {
+          if (this.isNearTrigger(exitTrig, 68)) {
+            this.clearWalkTarget();
+            this.handleTriggerAction(exitTrig);
+          } else {
+            this.setTapWalkTarget(
+              exitTrig.tileX * TILE_SIZE + TILE_SIZE / 2,
+              exitTrig.tileY * TILE_SIZE + TILE_SIZE / 2,
+              exitTrig
+            );
+          }
         }
       });
 
@@ -158,8 +192,8 @@ export class ExploreScene extends Phaser.Scene {
       });
     }
 
-    // 4. 高清輪廓角色精靈、腳下清晰中文名牌與頭頂互動玉牌
-    for (const trig of this.mapData.triggers) {
+    // 4. 高清輪廓角色精靈（含自然呼吸律動）、腳下清晰中文名牌與頭頂互動玉牌
+    this.mapData.triggers.forEach((trig, idx) => {
       const tx = trig.tileX * TILE_SIZE + TILE_SIZE / 2;
       const ty = trig.tileY * TILE_SIZE + TILE_SIZE / 2;
 
@@ -169,11 +203,24 @@ export class ExploreScene extends Phaser.Scene {
 
         const facing = trig.facing || 'down';
         const frame = CHAR_IDLE_FRAME[facing];
+        const baseScale = 1.18 / CHAR_HD_SCALE;
         const npcSprite = this.add
           .sprite(tx, ty + 2, trig.spriteKey, frame)
           .setOrigin(0.5, 0.92)
-          .setScale(1.18 / CHAR_HD_SCALE)
+          .setScale(baseScale)
           .setDepth(10 + trig.tileY * 0.1);
+
+        // 輕微呼吸起伏微動畫（Game Juice）
+        this.tweens.add({
+          targets: npcSprite,
+          scaleY: baseScale * 1.032,
+          scaleX: baseScale * 0.985,
+          duration: 920 + (idx % 5) * 130,
+          yoyo: true,
+          repeat: -1,
+          ease: 'Sine.easeInOut'
+        });
+
         npcSprite.setInteractive(
           new Phaser.Geom.Rectangle(
             -28 * CHAR_HD_SCALE,
@@ -187,15 +234,15 @@ export class ExploreScene extends Phaser.Scene {
 
         npcSprite.on('pointerdown', () => {
           const ui = this.registry.get('ui') as HudUI;
-          if (
-            !ui.isModalOpen &&
-            !this.isDepartingCutscene &&
-            this.isNearTrigger(trig, 58)
-          ) {
+          if (ui.isModalOpen || this.isDepartingCutscene) return;
+          if (this.isNearTrigger(trig, 58)) {
+            this.clearWalkTarget();
             npcSprite.setFrame(
               CHAR_IDLE_FRAME[this.getOppositeFacing(this.playerDir)]
             );
             this.handleTriggerAction(trig);
+          } else {
+            this.setTapWalkTarget(tx, ty + 14, trig);
           }
         });
       }
@@ -241,15 +288,29 @@ export class ExploreScene extends Phaser.Scene {
         });
         this.npcBadges.set(trig.id, badge);
       }
-    }
+    });
 
     this.refreshBadges();
 
-    // 5. 玩家主角精靈
+    // 5. 玩家主角精靈與點地即走目標光圈
     const startTileX = progress.playerTileX ?? this.mapData.spawnX;
     const startTileY = progress.playerTileY ?? this.mapData.spawnY;
     const startPx = startTileX * TILE_SIZE + TILE_SIZE / 2;
     const startPy = startTileY * TILE_SIZE + TILE_SIZE / 2 + 2;
+
+    this.tapTargetRing = this.add
+      .circle(startPx, startPy, 10)
+      .setStrokeStyle(2, 0x6ce8b2, 0.92)
+      .setDepth(4.2)
+      .setVisible(false);
+
+    this.tweens.add({
+      targets: this.tapTargetRing,
+      scale: { from: 0.75, to: 1.25 },
+      alpha: { from: 0.95, to: 0.35 },
+      duration: 580,
+      repeat: -1
+    });
 
     this.playerAura = this.add
       .ellipse(startPx, startPy, 22, 8, 0xffe48a, 0.24)
@@ -261,6 +322,45 @@ export class ExploreScene extends Phaser.Scene {
       .setOrigin(0.5, 0.92)
       .setScale(1.18 / CHAR_HD_SCALE)
       .setDepth(12);
+
+    // 5b. 雙軌操控：點按地圖地面或遠處人物即可自動前往（Tap-to-Walk）
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      const ui = this.registry.get('ui') as HudUI;
+      if (ui.isModalOpen || this.isDepartingCutscene) return;
+
+      const worldPt = this.cameras.main.getWorldPoint(p.x, p.y);
+      const wx = Phaser.Math.Clamp(worldPt.x, 12, worldW - 12);
+      const wy = Phaser.Math.Clamp(worldPt.y, 16, worldH - 12);
+
+      // 檢查是否點中某個互動觸發點附近
+      let tappedTrig: MapTrigger | null = null;
+      let minDist = 30;
+      for (const trig of this.mapData.triggers) {
+        const tx = trig.tileX * TILE_SIZE + TILE_SIZE / 2;
+        const ty = trig.tileY * TILE_SIZE + TILE_SIZE / 2;
+        const d = Phaser.Math.Distance.Between(wx, wy, tx, ty - 8);
+        if (d < minDist) {
+          minDist = d;
+          tappedTrig = trig;
+        }
+      }
+
+      if (tappedTrig) {
+        if (this.isNearTrigger(tappedTrig, 54)) {
+          this.clearWalkTarget();
+          this.handleTriggerAction(tappedTrig);
+        } else {
+          this.setTapWalkTarget(
+            tappedTrig.tileX * TILE_SIZE + TILE_SIZE / 2,
+            tappedTrig.tileY * TILE_SIZE + TILE_SIZE / 2 + 14,
+            tappedTrig
+          );
+        }
+        return;
+      }
+
+      this.setTapWalkTarget(wx, wy);
+    });
 
     // 6. 屋簷飛檐前景遮擋層
     const treeCanopySuppression = this.collectTreeCanopySuppressedTiles(
@@ -356,12 +456,141 @@ export class ExploreScene extends Phaser.Scene {
               savePos();
               this.scene.start('ClassSelectScene');
             }
-          : undefined
+          : undefined,
+      onResetSave: () => {
+        this.scene.start('TitleScene');
+      }
     });
 
     this.updateNearbyTrigger();
     this.renderExplorePanel();
     this.refreshMinimap();
+  }
+
+  private setupDynastyAtmosphere(
+    stageId: StageId,
+    worldW: number,
+    worldH: number
+  ): void {
+    if (stageId === 'yongzheng') {
+      // 雍正大殿莊重暖金宮燈光暈
+      const glowGfx = this.add.graphics().setDepth(6.2);
+      glowGfx.fillStyle(0xffcf6e, 0.09);
+      for (const trig of this.mapData.triggers) {
+        const gx = trig.tileX * TILE_SIZE + 12;
+        const gy = trig.tileY * TILE_SIZE;
+        glowGfx.fillCircle(gx, gy, 44);
+      }
+    }
+
+    const count = 20;
+    for (let i = 0; i < count; i++) {
+      const rx = Phaser.Math.Between(24, worldW - 24);
+      const ry = Phaser.Math.Between(24, worldH - 24);
+
+      let color = 0xffdce5;
+      let alpha = 0.72;
+      let w = 4;
+      let h = 3;
+      let vx = -10 - (i % 4) * 3;
+      let vy = 14 + (i % 3) * 4;
+
+      if (stageId === 'yongzheng') {
+        color = 0xffe494;
+        alpha = 0.48;
+        w = 3;
+        h = 3;
+        vx = (i % 2 === 0 ? 1 : -1) * 4;
+        vy = -8 - (i % 3) * 3;
+      } else if (stageId === 'qianlong') {
+        const isEastCanal = rx > worldW * 0.62;
+        color = isEastCanal ? 0xd4ffea : 0xd9b37c;
+        alpha = isEastCanal ? 0.68 : 0.46;
+        w = isEastCanal ? 4 : 3;
+        h = 2.5;
+        vx = isEastCanal ? -8 : 16;
+        vy = isEastCanal ? 10 : -3;
+      }
+
+      const dot = this.add
+        .ellipse(rx, ry, w, h, color, alpha)
+        .setDepth(31);
+      this.ambientMotes.push({
+        dot,
+        vx,
+        vy,
+        phase: i * 0.7
+      });
+    }
+  }
+
+  private setTapWalkTarget(
+    x: number,
+    y: number,
+    pendingTrigger?: MapTrigger
+  ): void {
+    this.walkTarget = { x, y, pendingTrigger, stuckMs: 0 };
+    this.tapTargetRing.setPosition(x, y).setVisible(true);
+  }
+
+  private clearWalkTarget(): void {
+    this.walkTarget = null;
+    if (this.tapTargetRing) {
+      this.tapTargetRing.setVisible(false);
+    }
+  }
+
+  /** 獲得新史料證據時的飛入閃光與飄字回饋（Game Juice） */
+  private playEvidenceCollectedJuice(worldX: number, worldY: number): void {
+    const token = this.add
+      .image(worldX, worldY - 26, 'npc_badge')
+      .setScale(1.25)
+      .setDepth(52);
+
+    const ring = this.add
+      .circle(worldX, worldY - 20, 8)
+      .setStrokeStyle(2.5, 0xffe885, 1)
+      .setDepth(51);
+
+    const label = this.add
+      .text(worldX, worldY - 40, '📜 獲得歷史證據！', {
+        fontSize: '12px',
+        color: '#ffe885',
+        backgroundColor: 'rgba(34, 88, 66, 0.92)',
+        padding: { x: 6, y: 2 },
+        fontStyle: 'bold',
+        stroke: '#0e291e',
+        strokeThickness: 2
+      })
+      .setOrigin(0.5)
+      .setDepth(53);
+
+    this.tweens.add({
+      targets: ring,
+      scale: 2.8,
+      alpha: 0,
+      duration: 520,
+      onComplete: () => ring.destroy()
+    });
+
+    this.tweens.add({
+      targets: token,
+      y: worldY - 68,
+      scale: 0.5,
+      alpha: 0,
+      duration: 720,
+      ease: 'Cubic.easeIn',
+      onComplete: () => token.destroy()
+    });
+
+    this.tweens.add({
+      targets: label,
+      y: worldY - 66,
+      alpha: 0,
+      delay: 320,
+      duration: 680,
+      onComplete: () => label.destroy()
+    });
   }
 
   private ensureCompactStatusCardStyle(): void {
@@ -370,33 +599,15 @@ export class ExploreScene extends Phaser.Scene {
     style.id = COMPACT_HUD_STYLE_ID;
     style.textContent = `
       .hud-status-card {
-        max-width: min(344px, calc(100vw - 160px)) !important;
+        max-width: min(352px, calc(100vw - 160px)) !important;
         padding: 8px 11px !important;
         gap: 5px !important;
         backdrop-filter: blur(4px);
       }
-      .hud-status-card .hud-hint-line {
-        font-size: 13px !important;
-        line-height: 1.4 !important;
-      }
-      .hud-status-card .checklist-wrap {
-        gap: 4px !important;
-      }
-      .hud-status-card .check-chip {
-        padding: 2px 7px !important;
-        font-size: 12px !important;
-      }
       @media (max-height: 520px), (max-width: 680px) {
         .hud-status-card {
-          max-width: min(292px, calc(100vw - 108px)) !important;
+          max-width: min(296px, calc(100vw - 108px)) !important;
           padding: 6px 9px !important;
-        }
-        .hud-status-card .hud-stage-pill {
-          font-size: 11.5px !important;
-          padding: 1px 6px !important;
-        }
-        .hud-status-card .hud-zone-text {
-          font-size: 12.5px !important;
         }
         .hud-status-card .hud-hint-line {
           font-size: 12px !important;
@@ -404,10 +615,6 @@ export class ExploreScene extends Phaser.Scene {
           -webkit-line-clamp: 2;
           -webkit-box-orient: vertical;
           overflow: hidden;
-        }
-        .hud-status-card .check-chip {
-          padding: 1.5px 5.5px !important;
-          font-size: 11px !important;
         }
       }
     `;
@@ -550,6 +757,7 @@ export class ExploreScene extends Phaser.Scene {
     };
 
     ui.updateExploreMinimap({
+      stageKey: gameState.currentStage,
       cols: this.mapData.cols,
       rows: this.mapData.rows,
       solid: this.mapData.solid,
@@ -597,7 +805,7 @@ export class ExploreScene extends Phaser.Scene {
     ) {
       return '人物證據已收齊！請跟著箭嘴完成本關小遊戲挑戰，再前往出口。';
     }
-    return '請拖曳左下搖桿移動探索，靠近人物、線索或挑戰桌按右下「調查／傾談」。';
+    return '可拖曳左下搖桿或「直接點按地面／人物」走過去調查，右上可翻閱「證據簿」。';
   }
 
   private refreshBadges(): void {
@@ -626,6 +834,10 @@ export class ExploreScene extends Phaser.Scene {
   }
 
   public update(time: number, delta: number): void {
+    const dt = delta / 1000;
+    const worldW = this.mapData.cols * TILE_SIZE;
+    const worldH = this.mapData.rows * TILE_SIZE;
+
     this.waterTimer += delta;
     if (this.waterTimer >= 420) {
       this.waterTimer = 0;
@@ -634,6 +846,16 @@ export class ExploreScene extends Phaser.Scene {
       for (const wt of this.waterTiles) {
         wt.setFrame(frame);
       }
+    }
+
+    // 更新三朝環境微粒子
+    for (const m of this.ambientMotes) {
+      m.dot.x += (m.vx + Math.sin(time * 0.002 + m.phase) * 5) * dt;
+      m.dot.y += m.vy * dt;
+      if (m.dot.x < 8) m.dot.x = worldW - 12;
+      else if (m.dot.x > worldW - 8) m.dot.x = 12;
+      if (m.dot.y < 8) m.dot.y = worldH - 12;
+      else if (m.dot.y > worldH - 8) m.dot.y = 12;
     }
 
     const ui = this.registry.get('ui') as HudUI;
@@ -652,15 +874,62 @@ export class ExploreScene extends Phaser.Scene {
     if (this.cursors?.up.isDown || this.wasd?.W.isDown) vy = -1;
     else if (this.cursors?.down.isDown || this.wasd?.S.isDown) vy = 1;
 
+    // 若手動操作搖桿或鍵盤，立即取消點地即走目標
+    if (Math.hypot(vx, vy) > 0.05) {
+      if (this.walkTarget) {
+        this.clearWalkTarget();
+      }
+    } else if (this.walkTarget) {
+      const pending = this.walkTarget.pendingTrigger;
+      if (pending && this.isNearTrigger(pending, 44)) {
+        this.clearWalkTarget();
+        this.handleTriggerAction(pending);
+        return;
+      }
+
+      const dxT = this.walkTarget.x - this.player.x;
+      const dyT = this.walkTarget.y - this.player.y;
+      const distT = Math.hypot(dxT, dyT);
+      if (distT <= 8) {
+        const arrivedTrig = this.walkTarget.pendingTrigger;
+        this.clearWalkTarget();
+        if (arrivedTrig && this.isNearTrigger(arrivedTrig, 56)) {
+          this.handleTriggerAction(arrivedTrig);
+          return;
+        }
+      } else {
+        vx = dxT / distT;
+        vy = dyT / distT;
+      }
+    }
+
     const mag = Math.hypot(vx, vy);
     if (mag > 0.05) {
+      const prevX = this.player.x;
+      const prevY = this.player.y;
+
       const clampedMag = Math.min(1, mag);
-      const speed = 118 * clampedMag * (delta / 1000);
+      const speed = 118 * clampedMag * dt;
       const dx = (vx / mag) * speed;
       const dy = (vy / mag) * speed;
 
       this.tryMovePlayer(dx, 0);
       this.tryMovePlayer(0, dy);
+
+      if (this.walkTarget) {
+        const actualMoved = Math.hypot(
+          this.player.x - prevX,
+          this.player.y - prevY
+        );
+        if (actualMoved < 0.25) {
+          this.walkTarget.stuckMs += delta;
+          if (this.walkTarget.stuckMs > 320) {
+            this.clearWalkTarget();
+          }
+        } else {
+          this.walkTarget.stuckMs = 0;
+        }
+      }
 
       const ax = Math.abs(vx);
       const ay = Math.abs(vy);
@@ -885,10 +1154,11 @@ export class ExploreScene extends Phaser.Scene {
     const ui = this.registry.get('ui') as HudUI;
     if (ui.isModalOpen || this.isDepartingCutscene) return;
 
+    this.clearWalkTarget();
     if (!this.activeTrigger) {
       ui.showDialogue(
         '探索提示',
-        ['附近沒有可傾談或調查的對象。請走近人物、線索、挑戰桌或出口再按互動鍵。'],
+        ['附近沒有可傾談或調查的對象。請走近（或直接點按）人物、線索、挑戰桌或出口互動。'],
         () => this.renderExplorePanel()
       );
       return;
@@ -902,6 +1172,7 @@ export class ExploreScene extends Phaser.Scene {
     const stageCfg = STAGES[stageId];
     const prog = gameState.getStageProgress(stageId);
     const ui = this.registry.get('ui') as HudUI;
+    this.clearWalkTarget();
 
     if (trig.kind === 'decor_note') {
       ui.showDialogue(
@@ -916,7 +1187,7 @@ export class ExploreScene extends Phaser.Scene {
       const ptx = Math.floor(this.player.x / TILE_SIZE);
       const pty = Math.floor(this.player.y / TILE_SIZE);
       gameState.savePlayerPosition(ptx, pty);
-      this.scene.start(trig.sceneKey);
+      void launchMinigameScene(this, trig.sceneKey);
       return;
     }
 
@@ -936,10 +1207,16 @@ export class ExploreScene extends Phaser.Scene {
       const npcData = stageCfg.npcs[trig.id];
       if (!npcData) return;
 
+      const tx = trig.tileX * TILE_SIZE + TILE_SIZE / 2;
+      const ty = trig.tileY * TILE_SIZE + TILE_SIZE / 2;
+
       ui.showDialogue(npcData.name, npcData.lines, () => {
-        gameState.markNpcVisited(npcData.id, stageId);
+        const { isFirstVisit } = gameState.markNpcVisited(npcData.id, stageId);
         this.refreshBadges();
         this.renderExplorePanel();
+        if (isFirstVisit) {
+          this.playEvidenceCollectedJuice(tx, ty);
+        }
       });
       return;
     }
@@ -996,7 +1273,7 @@ export class ExploreScene extends Phaser.Scene {
       ui.showStageQuiz(
         stageCfg.quizzes,
         () => {
-          prog.quizPassed = true;
+          gameState.setQuizPassed(stageId);
           ui.showDialogue('答題完成', [PROMPTS.QUIZ_PASSED], () => {
             this.openStagePasswordPad(stageId);
           });
@@ -1015,7 +1292,6 @@ export class ExploreScene extends Phaser.Scene {
 
   private openStagePasswordPad(stageId: StageId): void {
     const stageCfg = STAGES[stageId];
-    const prog = gameState.getStageProgress(stageId);
     const ui = this.registry.get('ui') as HudUI;
 
     ui.showPasswordPad({
@@ -1027,20 +1303,19 @@ export class ExploreScene extends Phaser.Scene {
         this.renderExplorePanel();
       },
       onSuccess: () => {
-        prog.passwordPassed = true;
+        gameState.setPasswordPassed(stageId);
         this.onStagePasswordVerified(stageId);
       }
     });
   }
 
   private onStagePasswordVerified(stageId: StageId): void {
-    const prog = gameState.getStageProgress(stageId);
     const ui = this.registry.get('ui') as HudUI;
 
-    // 課堂分關模式：康熙、雍正、乾隆完成出關密碼後皆直接結束本關並返回分關選單，不會進入向乾隆進諫
+    // 課堂分關模式：展示「組員互教重點匯報卡（Jigsaw Card）」後返回分關選單，不進入向乾隆進諫
     if (gameState.mode === 'class') {
-      gameState.completedClassStages.add(stageId);
-      ui.showDialogue('完成本關', [PROMPTS.CLASS_STAGE_DONE], () => {
+      gameState.markClassStageCompleted(stageId);
+      ui.showJigsawSummaryCard(stageId, () => {
         this.scene.start('ClassSelectScene');
       });
       return;
@@ -1048,7 +1323,7 @@ export class ExploreScene extends Phaser.Scene {
 
     // 由康熙順序探索模式：完成康熙、雍正、乾隆全部三帝關卡後，才進入向乾隆進諫環節
     if (stageId === 'qianlong' && gameState.shouldEnterQianlongRemonstrance()) {
-      prog.qianlongEndingPhase = 'find_qianlong';
+      gameState.setQianlongEndingPhase('find_qianlong');
       this.refreshBadges();
       ui.showDialogue('過關提示', [PROMPTS.QIANLONG_AFTER_789_ARROW], () => {
         this.renderExplorePanel(PROMPTS.FIND_QIANLONG_AGAIN);
@@ -1068,7 +1343,7 @@ export class ExploreScene extends Phaser.Scene {
     const ui = this.registry.get('ui') as HudUI;
 
     const launchRemonstranceStep = () => {
-      prog.qianlongEndingPhase = 'ask_qianlong';
+      gameState.setQianlongEndingPhase('ask_qianlong');
       ui.showDialogue('乾隆皇帝', [PROMPTS.QIANLONG_FINAL_ASK_LINE], () => {
         ui.showQianlongRemonstrancePanel({
           entrySource: 'sequential',
@@ -1085,7 +1360,7 @@ export class ExploreScene extends Phaser.Scene {
     }
 
     ui.showDialogue('乾隆皇帝', [PROMPTS.QIANLONG_WAIT_TEACHER], () => {
-      prog.qianlongEndingPhase = 'teacher_password';
+      gameState.setQianlongEndingPhase('teacher_password');
       ui.showTeacherPasswordPad(() => {
         launchRemonstranceStep();
       });
@@ -1093,15 +1368,15 @@ export class ExploreScene extends Phaser.Scene {
   }
 
   private playRoyalBoatDeparture(): void {
-    const prog = gameState.getStageProgress('qianlong');
-    prog.qianlongEndingPhase = 'departing';
+    gameState.setQianlongEndingPhase('departing');
     this.isDepartingCutscene = true;
+    this.clearWalkTarget();
     this.guideArrow.setVisible(false);
     this.worldTargetIndicator.setVisible(false);
     this.playerAura.setVisible(false);
 
     if (gameState.mode === 'class') {
-      gameState.completedClassStages.add('qianlong');
+      gameState.markClassStageCompleted('qianlong');
     }
 
     const ui = this.registry.get('ui') as HudUI;
@@ -1154,8 +1429,7 @@ export class ExploreScene extends Phaser.Scene {
   }
 
   private showModernEndingView(): void {
-    const prog = gameState.getStageProgress('qianlong');
-    prog.qianlongEndingPhase = 'returned_modern';
+    gameState.setQianlongEndingPhase('returned_modern');
 
     const END_W = 576;
     const END_H = 432;
