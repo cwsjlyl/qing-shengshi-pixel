@@ -1,7 +1,10 @@
 import Phaser from 'phaser';
+import { CHAR_HD_SCALE } from '../gfx/CrispVisuals';
 import { TILE_SIZE, TileIndex } from '../gfx/PixelArtGenerator';
+import { SCHOOLBOY_SHEET_DATA_URI } from './schoolboySheetUri';
+
 /**
- * 已下載原創 PNG 於 Phaser Loader 的內部鍵值（路徑維持 public/assets/... 不變）
+ * 原創 PNG 於 Phaser Loader 的內部鍵值
  */
 export const RAW_PNG_KEYS = {
   PALACE: 'raw_png_palace',
@@ -10,10 +13,15 @@ export const RAW_PNG_KEYS = {
   CHARACTERS: 'raw_png_characters',
   SCHOOLBOY: 'raw_png_schoolboy'
 } as const;
+
+export const PALACE_TILES_HD_KEY = 'palace_tiles_hd';
+export const TILE_HD_PX = 48;
+
 /**
- * 立體建築、下半部獨立分簇樹冠、自然邊緣過渡、軍營與船隻物件圖集鍵值
+ * 立體建築、多樹種獨立樹冠、自然邊緣過渡、軍營與船隻物件圖集鍵值
  */
 export const HD_PROPS_ATLAS_KEY = 'hd_art_props';
+
 export type PropStampFrame =
   | 'palace_grand_roof'
   | 'palace_side_roof'
@@ -29,6 +37,10 @@ export type PropStampFrame =
   | 'tree_cluster_b'
   | 'tree_cluster_c'
   | 'tree_cluster_d'
+  | 'tree_blossom_a'
+  | 'tree_blossom_b'
+  | 'tree_autumn_a'
+  | 'tree_autumn_b'
   | 'jiangnan_rocks_a'
   | 'jiangnan_rocks_b'
   | 'shore_rocks_a'
@@ -46,6 +58,8 @@ export type PropStampFrame =
   | 'camp_rack'
   | 'camp_crate'
   | 'camp_crates'
+  | 'camp_logs'
+  | 'camp_firewood'
   | 'pier_boat_h'
   | 'pier_boat_v'
   | 'palace_eave_cap_l'
@@ -73,10 +87,7 @@ export type PropStampFrame =
   | 'jiangnan_shrub_b'
   | 'rustic_bamboo_fence'
   | 'cottage_stepping_stones';
-/**
- * 在既有 TileIndex (0..63) 之後擴充的同家族變體圖塊索引 (64..89)，
- * 全部寫入同一個 'palace_tiles' 圖集，確保 TitleScene、ExploreScene 與四個小遊戲 100% 相容。
- */
+
 export const ExtraTileIndex = {
   COURTYARD_BRICK_D: 64,
   COURTYARD_BRICK_E: 65,
@@ -105,15 +116,19 @@ export const ExtraTileIndex = {
   INVISIBLE_ROOF_MARKER: 88,
   TREE_BASE_SHADOW: 89
 } as const;
+
 export const CHAR_FRAME_W = 32;
 export const CHAR_FRAME_H = 42;
+
 type CharacterRowKind = 0 | 1 | 2 | 3 | 4;
+
 interface RobeRemapRule {
   targetR: number;
   targetG: number;
   targetB: number;
   strength: number;
 }
+
 interface CharacterSheetSpec {
   key: string;
   row: CharacterRowKind;
@@ -121,6 +136,15 @@ interface CharacterSheetSpec {
   useBeardedOfficial?: boolean;
   robeRemap?: RobeRemapRule;
 }
+
+/**
+ * 對齊上傳之五列角色精靈圖：
+ * 第 0 列：清帝（康熙、雍正、乾隆）
+ * 第 1 列：朝廷官員（滿族官員、貪官甲、貪官乙、和珅）
+ * 第 2 列：清兵（八旗甲兵）
+ * 第 3 列：農夫（斗笠百姓）
+ * 第 4 列：漢族士人／書生（使滿漢人物造型鮮明區分）
+ */
 const CHARACTER_SPECS: CharacterSheetSpec[] = [
   { key: 'char_student', row: 4, sideFacesRight: true },
   { key: 'char_kangxi_emperor', row: 0, sideFacesRight: false },
@@ -128,35 +152,34 @@ const CHARACTER_SPECS: CharacterSheetSpec[] = [
     key: 'char_yongzheng_emperor',
     row: 0,
     sideFacesRight: false,
-    robeRemap: { targetR: 186, targetG: 118, targetB: 22, strength: 0.34 }
+    robeRemap: { targetR: 192, targetG: 122, targetB: 24, strength: 0.36 }
   },
   {
     key: 'char_qianlong_emperor',
     row: 0,
     sideFacesRight: false,
-    robeRemap: { targetR: 250, targetG: 208, targetB: 68, strength: 0.25 }
+    robeRemap: { targetR: 252, targetG: 212, targetB: 64, strength: 0.26 }
   },
   { key: 'char_manchu_person', row: 1, sideFacesRight: false, useBeardedOfficial: true },
   {
     key: 'char_han_person',
-    row: 1,
-    sideFacesRight: false,
-    useBeardedOfficial: false,
-    robeRemap: { targetR: 62, targetG: 132, targetB: 104, strength: 0.58 }
+    row: 4,
+    sideFacesRight: true,
+    robeRemap: { targetR: 54, targetG: 128, targetB: 102, strength: 0.45 }
   },
   {
     key: 'char_corrupt_a',
     row: 1,
     sideFacesRight: false,
     useBeardedOfficial: true,
-    robeRemap: { targetR: 108, targetG: 62, targetB: 128, strength: 0.52 }
+    robeRemap: { targetR: 112, targetG: 58, targetB: 132, strength: 0.52 }
   },
   {
     key: 'char_corrupt_b',
     row: 1,
     sideFacesRight: false,
     useBeardedOfficial: false,
-    robeRemap: { targetR: 126, targetG: 84, targetB: 54, strength: 0.55 }
+    robeRemap: { targetR: 132, targetG: 86, targetB: 52, strength: 0.54 }
   },
   { key: 'char_qing_soldier', row: 2, sideFacesRight: true },
   {
@@ -164,16 +187,18 @@ const CHARACTER_SPECS: CharacterSheetSpec[] = [
     row: 1,
     sideFacesRight: false,
     useBeardedOfficial: false,
-    robeRemap: { targetR: 164, targetG: 38, targetB: 56, strength: 0.62 }
+    robeRemap: { targetR: 172, targetG: 36, targetB: 54, strength: 0.62 }
   },
   { key: 'char_farmer', row: 3, sideFacesRight: false }
 ];
+
 interface CropBox {
   x: number;
   y: number;
   w: number;
   h: number;
 }
+
 interface VariantTransform {
   shiftX?: number;
   shiftY?: number;
@@ -184,38 +209,62 @@ interface VariantTransform {
   mulB?: number;
   addLum?: number;
 }
+
 export class OriginalArtLoader {
   public static preloadAssets(scene: Phaser.Scene): void {
     scene.load.image(RAW_PNG_KEYS.PALACE, 'assets/tilesets/tileset-palace.png');
     scene.load.image(RAW_PNG_KEYS.JIANGNAN, 'assets/tilesets/tileset-jiangnan.png');
     scene.load.image(RAW_PNG_KEYS.CAMP_PIER, 'assets/tilesets/tileset-camp-pier.png');
     scene.load.image(RAW_PNG_KEYS.CHARACTERS, 'assets/sprites/sprites-characters.png');
-    scene.load.image(RAW_PNG_KEYS.SCHOOLBOY, 'assets/sprites/char-student-schoolboy.png');
+    scene.load.image(RAW_PNG_KEYS.SCHOOLBOY, SCHOOLBOY_SHEET_DATA_URI);
+
     scene.load.on('loaderror', (file: Phaser.Loader.File) => {
       console.warn(
-        `[OriginalArtLoader] 載入失敗：public/${file.url}，請確認 PNG 已放置於指定路徑。`
+        `[OriginalArtLoader] 載入失敗：public/${file.url}，請確認資源路徑。`
       );
     });
   }
+
   public static buildAllFromLoadedAssets(scene: Phaser.Scene): void {
     for (const rawKey of Object.values(RAW_PNG_KEYS)) {
       if (scene.textures.exists(rawKey)) {
         scene.textures.get(rawKey).setFilter(Phaser.Textures.FilterMode.NEAREST);
       }
     }
+
     const palaceImg = this.getSourceImage(scene, RAW_PNG_KEYS.PALACE);
     const jiangnanImg = this.getSourceImage(scene, RAW_PNG_KEYS.JIANGNAN);
     const campImg = this.getSourceImage(scene, RAW_PNG_KEYS.CAMP_PIER);
     const charImg = this.getSourceImage(scene, RAW_PNG_KEYS.CHARACTERS);
+
     const cleanPalace = palaceImg ? this.healSheetGridlines(palaceImg, 8, 10) : null;
     const cleanJiangnan = jiangnanImg ? this.healSheetGridlines(jiangnanImg, 8, 12) : null;
     const cleanCamp = campImg ? this.healSheetGridlines(campImg, 8, 8) : null;
-    this.buildPalaceTileset(scene, cleanPalace, cleanJiangnan, cleanCamp);
+
+    // 同步建立 24x24 標準地磚（相容小遊戲）與 48x48 雙倍高清地磚（供探索與主頁地圖呈現 4 倍像素細節）
+    this.buildPalaceTilesetBySize(
+      scene,
+      'palace_tiles',
+      TILE_SIZE,
+      cleanPalace,
+      cleanJiangnan,
+      cleanCamp
+    );
+    this.buildPalaceTilesetBySize(
+      scene,
+      PALACE_TILES_HD_KEY,
+      TILE_HD_PX,
+      cleanPalace,
+      cleanJiangnan,
+      cleanCamp
+    );
+
     this.buildPropsAtlas(scene, cleanPalace, cleanJiangnan, cleanCamp);
     this.buildAllCharacterSheets(scene, charImg);
     this.buildRoyalBoatTexture(scene, cleanPalace, cleanCamp);
     this.buildHudWorldMarkers(scene);
   }
+
   private static getSourceImage(
     scene: Phaser.Scene,
     key: string
@@ -227,6 +276,7 @@ export class OriginalArtLoader {
     }
     return null;
   }
+
   private static makeCanvas(w: number, h: number): HTMLCanvasElement {
     const c = document.createElement('canvas');
     c.width = Math.max(1, Math.round(w));
@@ -237,6 +287,7 @@ export class OriginalArtLoader {
     }
     return c;
   }
+
   private static fillBox(
     ctx: CanvasRenderingContext2D,
     x: number,
@@ -248,11 +299,13 @@ export class OriginalArtLoader {
     ctx.fillStyle = color;
     ctx.fillRect(x, y, w, h);
   }
+
   private static pixelNoise(x: number, y: number, seed = 0): number {
     let n = (x * 374761393 + y * 668265263 + seed * 1442695041) | 0;
     n = ((n ^ (n >>> 13)) * 1274126177) | 0;
     return ((n ^ (n >>> 16)) >>> 0) % 1000;
   }
+
   private static healSheetGridlines(
     src: HTMLImageElement | HTMLCanvasElement,
     cols: number,
@@ -265,6 +318,7 @@ export class OriginalArtLoader {
     ctx.drawImage(src, 0, 0);
     const imgData = ctx.getImageData(0, 0, w, h);
     const d = imgData.data;
+
     for (let c = 1; c < cols; c++) {
       const gxCenter = Math.round((c * w) / cols);
       for (let dx = -1; dx <= 1; dx++) {
@@ -289,6 +343,7 @@ export class OriginalArtLoader {
         }
       }
     }
+
     for (let r = 1; r < rows; r++) {
       const gyCenter = Math.round((r * h) / rows);
       for (let dy = -1; dy <= 1; dy++) {
@@ -313,15 +368,19 @@ export class OriginalArtLoader {
         }
       }
     }
+
     ctx.putImageData(imgData, 0, 0);
     return out;
   }
+
   private static isNeutralCheckerPixel(r: number, g: number, b: number, a: number): boolean {
     if (a < 20) return true;
     const chroma = Math.max(r, g, b) - Math.min(r, g, b);
     const lum = (r * 299 + g * 587 + b * 114) / 1000;
-    return chroma <= 18 && lum >= 134;
+    // 精準鎖定灰白棋盤格亮度區間 (134..224)，保護純白靴底與衣領 (>=232)
+    return chroma <= 16 && lum >= 134 && lum <= 224;
   }
+
   private static isThinGridBridge(
     data: Uint8ClampedArray,
     x: number,
@@ -358,9 +417,7 @@ export class OriginalArtLoader {
     }
     return false;
   }
-  /**
-   * 四向連通洪水填充去背：清除外部灰白棋盤與封閉棋盤孔洞，保留深色描邊與角色眼白
-   */
+
   public static removeCheckerboardAndGrid(canvas: HTMLCanvasElement): void {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
@@ -374,6 +431,7 @@ export class OriginalArtLoader {
     const queue = new Int32Array(total);
     let qHead = 0;
     let qTail = 0;
+
     const canClearBg = (px: number, py: number): boolean => {
       const p = (py * w + px) * 4;
       if (this.isNeutralCheckerPixel(data[p], data[p + 1], data[p + 2], data[p + 3])) {
@@ -381,6 +439,7 @@ export class OriginalArtLoader {
       }
       return this.isThinGridBridge(data, px, py, w, h);
     };
+
     const trySeed = (px: number, py: number) => {
       const idx = py * w + px;
       if (!visited[idx] && canClearBg(px, py)) {
@@ -389,6 +448,7 @@ export class OriginalArtLoader {
         queue[qTail++] = idx;
       }
     };
+
     for (let x = 0; x < w; x++) {
       trySeed(x, 0);
       trySeed(x, h - 1);
@@ -397,12 +457,14 @@ export class OriginalArtLoader {
       trySeed(0, y);
       trySeed(w - 1, y);
     }
+
     const dirs4 = [
       [1, 0],
       [-1, 0],
       [0, 1],
       [0, -1]
     ];
+
     while (qHead < qTail) {
       const curr = queue[qHead++];
       const cx = curr % w;
@@ -419,6 +481,7 @@ export class OriginalArtLoader {
         }
       }
     }
+
     const compBuf = new Int32Array(total);
     for (let idx = 0; idx < total; idx++) {
       if (visited[idx]) continue;
@@ -436,8 +499,8 @@ export class OriginalArtLoader {
         const cur = compBuf[cHead++];
         const cp = cur * 4;
         const lum = (data[cp] * 299 + data[cp + 1] * 587 + data[cp + 2] * 114) / 1000;
-        if (lum >= 205) lightCount++;
-        else if (lum >= 136 && lum <= 192) midGreyCount++;
+        if (lum >= 200) lightCount++;
+        else if (lum >= 136 && lum <= 185) midGreyCount++;
         const cx = cur % w;
         const cy = (cur - cx) / w;
         for (let d = 0; d < 4; d++) {
@@ -453,17 +516,19 @@ export class OriginalArtLoader {
           }
         }
       }
-      if (cTail >= 20 && lightCount >= 6 && midGreyCount >= 6) {
+      if (cTail >= 18 && lightCount >= 5 && midGreyCount >= 5) {
         for (let i = 0; i < cTail; i++) {
           cleared[compBuf[i]] = 1;
         }
       }
     }
+
     for (let idx = 0; idx < total; idx++) {
       if (cleared[idx]) {
         data[idx * 4 + 3] = 0;
       }
     }
+
     for (let y = 1; y < h - 1; y++) {
       for (let x = 1; x < w - 1; x++) {
         const idx = y * w + x;
@@ -472,7 +537,7 @@ export class OriginalArtLoader {
         const maxC = Math.max(data[p], data[p + 1], data[p + 2]);
         const minC = Math.min(data[p], data[p + 1], data[p + 2]);
         const lum = (data[p] + data[p + 1] + data[p + 2]) / 3;
-        if (maxC - minC <= 16 && lum >= 145) {
+        if (maxC - minC <= 14 && lum >= 140 && lum <= 220) {
           const emptyNeighbors =
             (data[(idx - 1) * 4 + 3] === 0 ? 1 : 0) +
             (data[(idx + 1) * 4 + 3] === 0 ? 1 : 0) +
@@ -484,8 +549,10 @@ export class OriginalArtLoader {
         }
       }
     }
+
     ctx.putImageData(imgData, 0, 0);
   }
+
   private static stripBorderWaterBackground(canvas: HTMLCanvasElement): void {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
@@ -498,11 +565,13 @@ export class OriginalArtLoader {
     const q = new Int32Array(total);
     let head = 0;
     let tail = 0;
+
     const isWaterBg = (idx: number): boolean => {
       const p = idx * 4;
       if (d[p + 3] < 20) return true;
       return d[p + 2] > d[p] + 14 && d[p + 1] > d[p] + 6;
     };
+
     const seed = (x: number, y: number) => {
       const idx = y * w + x;
       if (!visited[idx] && isWaterBg(idx)) {
@@ -511,6 +580,7 @@ export class OriginalArtLoader {
         q[tail++] = idx;
       }
     };
+
     for (let x = 0; x < w; x++) {
       seed(x, 0);
       seed(x, h - 1);
@@ -519,6 +589,7 @@ export class OriginalArtLoader {
       seed(0, y);
       seed(w - 1, y);
     }
+
     const dirs = [
       [1, 0],
       [-1, 0],
@@ -543,9 +614,7 @@ export class OriginalArtLoader {
     }
     ctx.putImageData(imgData, 0, 0);
   }
-  /**
-   * 去除獨立樹冠外圍草地底角與水角，確保樹下乾淨無方形泥塊或草框
-   */
+
   private static isolateCleanTreeCanopy(canvas: HTMLCanvasElement): void {
     this.removeCheckerboardAndGrid(canvas);
     this.stripBorderWaterBackground(canvas);
@@ -560,6 +629,7 @@ export class OriginalArtLoader {
     const q = new Int32Array(total);
     let head = 0;
     let tail = 0;
+
     const isFlatLawnBg = (idx: number): boolean => {
       const p = idx * 4;
       if (d[p + 3] === 0) return true;
@@ -569,6 +639,7 @@ export class OriginalArtLoader {
       const lum = r * 0.299 + g * 0.587 + b * 0.114;
       return lum >= 82 && lum <= 162 && g > r + 8 && g > b + 14 && r >= 68;
     };
+
     for (let x = 0; x < w; x++) {
       const idx = (h - 1) * w + x;
       if (isFlatLawnBg(idx)) {
@@ -587,6 +658,7 @@ export class OriginalArtLoader {
         }
       }
     }
+
     const dirs = [
       [1, 0],
       [-1, 0],
@@ -609,6 +681,7 @@ export class OriginalArtLoader {
         }
       }
     }
+
     const trunkLeft = Math.floor(w * 0.28);
     const trunkRight = Math.ceil(w * 0.72);
     const baseTop = Math.floor(h * 0.76);
@@ -623,6 +696,7 @@ export class OriginalArtLoader {
     }
     ctx.putImageData(imgData, 0, 0);
   }
+
   private static extractGridSubCanvas(
     source: HTMLImageElement | HTMLCanvasElement,
     gridCols: number,
@@ -647,6 +721,7 @@ export class OriginalArtLoader {
     if (transparentBg) this.removeCheckerboardAndGrid(out);
     return out;
   }
+
   private static extractNormalizedSubCanvas(
     source: HTMLImageElement | HTMLCanvasElement,
     nx: number,
@@ -666,6 +741,7 @@ export class OriginalArtLoader {
     if (transparentBg) this.removeCheckerboardAndGrid(out);
     return out;
   }
+
   private static makeToroidalSeamless(
     src: HTMLCanvasElement,
     size: number,
@@ -708,6 +784,7 @@ export class OriginalArtLoader {
     bCtx.putImageData(outData, 0, 0);
     return base;
   }
+
   private static purifyPureGrassPatch(src: HTMLCanvasElement, size: number): HTMLCanvasElement {
     const c = this.makeCanvas(size, size);
     const ctx = c.getContext('2d', { willReadFrequently: true })!;
@@ -740,6 +817,7 @@ export class OriginalArtLoader {
     }
     return this.makeToroidalSeamless(c, size, 4);
   }
+
   private static purifyPureEarthPatch(src: HTMLCanvasElement, size: number): HTMLCanvasElement {
     const c = this.makeCanvas(size, size);
     const ctx = c.getContext('2d', { willReadFrequently: true })!;
@@ -772,6 +850,7 @@ export class OriginalArtLoader {
     }
     return this.makeToroidalSeamless(c, size, 4);
   }
+
   private static makeSeamlessFamilyVariant(
     baseTile: HTMLCanvasElement,
     size: number,
@@ -785,6 +864,7 @@ export class OriginalArtLoader {
     sCtx.scale(opts.flipX ? -1 : 1, opts.flipY ? -1 : 1);
     sCtx.drawImage(baseTile, 0, 0, baseTile.width, baseTile.height, 0, 0, size, size);
     sCtx.restore();
+
     const out = this.makeCanvas(size, size);
     const oCtx = out.getContext('2d', { willReadFrequently: true })!;
     const sx = ((opts.shiftX ?? 0) % size + size) % size;
@@ -794,6 +874,7 @@ export class OriginalArtLoader {
         oCtx.drawImage(scaled, dx, dy);
       }
     }
+
     const mulR = opts.mulR ?? 1;
     const mulG = opts.mulG ?? 1;
     const mulB = opts.mulB ?? 1;
@@ -811,15 +892,14 @@ export class OriginalArtLoader {
     }
     return out;
   }
+
   private static makeSolidFallbackTile(size: number, color: string): HTMLCanvasElement {
     const c = this.makeCanvas(size, size);
     const ctx = c.getContext('2d')!;
     this.fillBox(ctx, 0, 0, size, size, color);
     return c;
   }
-  /**
-   * 高對比立體清代朱紅殿柱（含漢白玉蓮瓣柱礎、圓柱受光高光、斗拱彩畫柱頭與深邃斜影）
-   */
+
   private static buildImperialVermilionPillar(
     ornateGoldInlay: boolean,
     w = 30,
@@ -828,11 +908,10 @@ export class OriginalArtLoader {
     const out = this.makeCanvas(w, h);
     const ctx = out.getContext('2d')!;
     const cx = Math.floor(w / 2);
-    // 多層次柔和接地斜影（不呈方塊，加強殿內外對比度）
     this.fillBox(ctx, 2, h - 7, w - 2, 6, 'rgba(16, 10, 8, 0.22)');
     this.fillBox(ctx, 4, h - 6, w - 6, 5, 'rgba(16, 10, 8, 0.38)');
     this.fillBox(ctx, 7, h - 5, w - 11, 3, 'rgba(12, 6, 4, 0.50)');
-    // 漢白玉雕花鼓形柱礎
+
     const baseTop = h - 13;
     this.fillBox(ctx, cx - 8, baseTop + 4, 16, 6, '#38322c');
     this.fillBox(ctx, cx - 7, baseTop + 1, 14, 8, '#38322c');
@@ -845,7 +924,7 @@ export class OriginalArtLoader {
     }
     this.fillBox(ctx, cx - 6, baseTop, 12, 2, '#734f14');
     this.fillBox(ctx, cx - 5, baseTop, 8, 1, '#f0c048');
-    // 朱紅圓柱柱身（6 階立體圓柱光影）
+
     const shaftTop = 15;
     const shaftH = baseTop - shaftTop;
     const sx = cx - 6;
@@ -869,7 +948,7 @@ export class OriginalArtLoader {
     this.fillBox(ctx, sx + 1, shaftTop, 10, 4, 'rgba(22, 6, 4, 0.46)');
     this.fillBox(ctx, sx + 1, shaftTop + 3, 10, 1, '#d9a636');
     this.fillBox(ctx, sx + 3, shaftTop + 3, 4, 1, '#ffe282');
-    // 清式和璽彩畫額枋與挑出斗拱柱頭（倒梯形階梯輪廓，打破矩形頂端）
+
     this.fillBox(ctx, cx - 8, 10, 16, 6, '#261b14');
     this.fillBox(ctx, cx - 7, 11, 14, 4, '#1f5c48');
     this.fillBox(ctx, cx - 5, 11, 9, 2, '#388f70');
@@ -888,9 +967,7 @@ export class OriginalArtLoader {
     this.fillBox(ctx, cx + 12, 1, 2, 2, '#f0bc42');
     return out;
   }
-  /**
-   * 精細立體漢白玉宮燈（防止淺灰石材在去背時被誤判為棋盤格掏空）
-   */
+
   private static buildCrispStoneLantern(warmLit: boolean, w = 28, h = 36): HTMLCanvasElement {
     const out = this.makeCanvas(w, h);
     const ctx = out.getContext('2d')!;
@@ -921,14 +998,12 @@ export class OriginalArtLoader {
     this.fillBox(ctx, cx - 1, 1, 2, 2, '#d9aa44');
     return out;
   }
-  /**
-   * 鎏金銅鼎香爐（修正原圖香爐在米白丹墀上只剩細腳的問題）
-   */
+
   private static buildBronzeIncenseTile(size: number): HTMLCanvasElement {
-    const out = this.makeCanvas(size, size);
-    const ctx = out.getContext('2d')!;
-    this.fillBox(ctx, 4, size - 5, size - 8, 4, 'rgba(18, 12, 8, 0.28)');
-    this.fillBox(ctx, 6, size - 4, size - 12, 2, 'rgba(18, 12, 8, 0.42)');
+    const base = this.makeCanvas(24, 24);
+    const ctx = base.getContext('2d')!;
+    this.fillBox(ctx, 4, 19, 16, 4, 'rgba(18, 12, 8, 0.28)');
+    this.fillBox(ctx, 6, 20, 12, 2, 'rgba(18, 12, 8, 0.42)');
     this.fillBox(ctx, 6, 16, 3, 6, '#291c12');
     this.fillBox(ctx, 15, 16, 3, 6, '#291c12');
     this.fillBox(ctx, 11, 17, 2, 5, '#291c12');
@@ -948,11 +1023,12 @@ export class OriginalArtLoader {
     this.fillBox(ctx, 8, 5, 8, 2, '#ba8a40');
     this.fillBox(ctx, 10, 3, 4, 2, '#f5cf70');
     this.fillBox(ctx, 11, 1, 2, 2, '#f5cf70');
-    return out;
+    if (size === 24) return base;
+    const scaled = this.makeCanvas(size, size);
+    scaled.getContext('2d')!.drawImage(base, 0, 0, 24, 24, 0, 0, size, size);
+    return scaled;
   }
-  /**
-   * 宮殿飛簷翼角與脊獸組件（打破殿簷與牆角矩形積木邊界）
-   */
+
   private static buildPalaceEaveCap(isRight: boolean): HTMLCanvasElement {
     const base = this.makeCanvas(44, 42);
     const ctx = base.getContext('2d')!;
@@ -989,9 +1065,7 @@ export class OriginalArtLoader {
     fCtx.drawImage(base, 0, 0);
     return flipped;
   }
-  /**
-   * 殿簷下連續斗拱彩畫額枋（齒狀昂嘴與投影打破屋簷水平刀切線）
-   */
+
   private static buildPalaceDougongSpan(w = 96, h = 18): HTMLCanvasElement {
     const out = this.makeCanvas(w, h);
     const ctx = out.getContext('2d')!;
@@ -1010,9 +1084,7 @@ export class OriginalArtLoader {
     this.fillBox(ctx, 0, 10, w, 3, 'rgba(20, 8, 6, 0.22)');
     return out;
   }
-  /**
-   * 宮牆門洞抱框朱柱配漢白玉抱鼓石（柔化門洞開口垂直硬切邊）
-   */
+
   private static buildPalaceDoorJamb(isRight: boolean): HTMLCanvasElement {
     const base = this.makeCanvas(26, 42);
     const ctx = base.getContext('2d')!;
@@ -1039,9 +1111,7 @@ export class OriginalArtLoader {
     fCtx.drawImage(base, 0, 0);
     return flipped;
   }
-  /**
-   * 宮牆轉角抱角紅柱配漢白玉角石台基與青苔點綴
-   */
+
   private static buildPalaceCornerPilaster(): HTMLCanvasElement {
     const out = this.makeCanvas(28, 40);
     const ctx = out.getContext('2d')!;
@@ -1060,9 +1130,7 @@ export class OriginalArtLoader {
     this.fillBox(ctx, 19, 35, 2, 2, '#5c7848');
     return out;
   }
-  /**
-   * 圓弧漢白玉月洞門連琉璃捲棚披簷組件（取代雍正南牆 4 格方正綠塊）
-   */
+
   private static buildMoonGateArch(w = 108, h = 46): HTMLCanvasElement {
     const out = this.makeCanvas(w, h);
     const ctx = out.getContext('2d')!;
@@ -1133,9 +1201,7 @@ export class OriginalArtLoader {
     }
     return out;
   }
-  /**
-   * 漢白玉御道與青磚交界自然過渡邊石（參差石緣＋碎石＋青苔＋柔和邊影）
-   */
+
   private static buildMarbleEdgeOverlay(side: 'w' | 'e' | 'n' | 's'): HTMLCanvasElement {
     const isVert = side === 'w' || side === 'e';
     const w = isVert ? 20 : 48;
@@ -1162,10 +1228,6 @@ export class OriginalArtLoader {
         this.fillBox(ctx, seamX + dir * (jut + 1), y, 1, 1, 'rgba(28, 24, 20, 0.16)');
         if (n % 12 === 0) {
           this.fillBox(ctx, seamX + dir * jut, y, 2, 2, 'rgba(84, 114, 64, 0.78)');
-        } else if (n % 17 === 0) {
-          this.fillBox(ctx, seamX + dir * (jut + 2), y, 2, 1, 'rgba(186, 180, 168, 0.85)');
-        } else if (n % 23 === 0) {
-          this.fillBox(ctx, seamX - dir, y, 2, 1, 'rgba(104, 130, 76, 0.62)');
         }
       }
     } else {
@@ -1186,18 +1248,11 @@ export class OriginalArtLoader {
         }
         this.fillBox(ctx, x, seamY + dir * jut, 1, 1, 'rgba(28, 24, 20, 0.34)');
         this.fillBox(ctx, x, seamY + dir * (jut + 1), 1, 1, 'rgba(28, 24, 20, 0.16)');
-        if (n % 13 === 0) {
-          this.fillBox(ctx, x, seamY + dir * jut, 2, 2, 'rgba(84, 114, 64, 0.78)');
-        } else if (n % 19 === 0) {
-          this.fillBox(ctx, x, seamY + dir * (jut + 2), 2, 1, 'rgba(186, 180, 168, 0.85)');
-        }
       }
     }
     return out;
   }
-  /**
-   * 牆腳青苔、散落碎石與漸層柔影帶（中心 y = 9 精準對齊牆底與地面交界線）
-   */
+
   private static buildWallFootMossStrip(variant: number): HTMLCanvasElement {
     const w = 48;
     const h = 18;
@@ -1221,14 +1276,11 @@ export class OriginalArtLoader {
       if (n % 13 === 0) {
         const py = 10 + (n % 4);
         this.fillBox(ctx, x, py, 2, 1, 'rgba(196, 190, 178, 0.85)');
-        this.fillBox(ctx, x, py + 1, 2, 1, 'rgba(52, 48, 44, 0.38)');
       }
     }
     return out;
   }
-  /**
-   * 草地向泥路／沙地／石板自然蔓延的不規則草穗過渡帶
-   */
+
   private static buildGrassFringeOverlay(
     dirIntoOther: 'n' | 's' | 'w' | 'e'
   ): HTMLCanvasElement {
@@ -1255,13 +1307,6 @@ export class OriginalArtLoader {
         if (shadowY >= 0 && shadowY < h) {
           this.fillBox(ctx, x, shadowY, 1, 1, 'rgba(28, 22, 14, 0.24)');
         }
-        if (n % 17 === 0) {
-          const tuftY = seamY + step * (reach + 2);
-          if (tuftY >= 1 && tuftY < h - 2) this.fillBox(ctx, x, tuftY, 2, 2, '#5c8a40');
-        } else if (n % 29 === 0) {
-          const flY = seamY - step * 2;
-          if (flY >= 1 && flY < h - 1) this.fillBox(ctx, x, flY, 1, 1, '#fff3bf');
-        }
       }
     } else {
       const step = dirIntoOther === 'e' ? 1 : -1;
@@ -1276,21 +1321,11 @@ export class OriginalArtLoader {
             this.fillBox(ctx, px, y, 1, 1, k === reach - 1 ? greens[3] : greens[(n + k + 3) % 3]);
           }
         }
-        const shadowX = seamX + step * reach;
-        if (shadowX >= 0 && shadowX < w) {
-          this.fillBox(ctx, shadowX, y, 1, 1, 'rgba(28, 22, 14, 0.22)');
-        }
-        if (n % 19 === 0) {
-          const tuftX = seamX + step * (reach + 2);
-          if (tuftX >= 1 && tuftX < w - 2) this.fillBox(ctx, tuftX, y, 2, 2, '#5c8a40');
-        }
       }
     }
     return out;
   }
-  /**
-   * 蜿蜒泥草田埂（打破乾隆西南農田完美矩形邊框與機械直線感）
-   */
+
   private static buildFarmlandBund(horizontal: boolean): HTMLCanvasElement {
     const w = horizontal ? 48 : 22;
     const h = horizontal ? 22 : 48;
@@ -1303,7 +1338,6 @@ export class OriginalArtLoader {
         this.fillBox(ctx, x, cy + 3, 1, 2, 'rgba(32, 20, 10, 0.34)');
         this.fillBox(ctx, x, cy - 2, 1, 5, '#6e5233');
         this.fillBox(ctx, x, cy - 2, 1, 3, '#8f6d46');
-        this.fillBox(ctx, x, cy - 2, 1, 1, '#ab875b');
         if (n % 4 <= 1) {
           this.fillBox(ctx, x, cy - 3, 1, 2, n % 2 === 0 ? '#5b853e' : '#739949');
         }
@@ -1315,16 +1349,11 @@ export class OriginalArtLoader {
         this.fillBox(ctx, cx + 3, y, 2, 1, 'rgba(32, 20, 10, 0.30)');
         this.fillBox(ctx, cx - 2, y, 5, 1, '#6e5233');
         this.fillBox(ctx, cx - 2, y, 3, 1, '#8f6d46');
-        if (n % 4 <= 1) {
-          this.fillBox(ctx, cx - 1, y, 2, 1, n % 2 === 0 ? '#5b853e' : '#739949');
-        }
       }
     }
     return out;
   }
-  /**
-   * 江南屋角與庭園自然灌木花叢（供遮擋建築生硬屋角與牆根接縫）
-   */
+
   private static buildJiangnanShrub(flowering: boolean): HTMLCanvasElement {
     const w = 38;
     const h = 30;
@@ -1380,9 +1409,7 @@ export class OriginalArtLoader {
     }
     return out;
   }
-  /**
-   * 荷池／水岸菖蒲水草與鵝卵石叢（柔化水池直角邊緣）
-   */
+
   private static buildPondReeds(variant: number): HTMLCanvasElement {
     const w = 34;
     const h = 28;
@@ -1419,6 +1446,7 @@ export class OriginalArtLoader {
     });
     return out;
   }
+
   private static buildRusticBambooFence(): HTMLCanvasElement {
     const w = 44;
     const h = 24;
@@ -1436,12 +1464,55 @@ export class OriginalArtLoader {
       this.fillBox(ctx, x, 10, 3, 2, '#3d2b16');
       this.fillBox(ctx, x, 16, 3, 2, '#3d2b16');
     }
-    for (const gx of [5, 14, 24, 34]) {
-      this.fillBox(ctx, gx, h - 6, 3, 3, '#538039');
-      this.fillBox(ctx, gx + 1, h - 7, 1, 2, '#709e4a');
-    }
     return out;
   }
+
+  /**
+   * 參照上傳軍營素材（右下捆綁原木堆與柴火堆）繪製高細節軍需原木與營火柴堆
+   */
+  private static buildCampTimberLogs(): HTMLCanvasElement {
+    const w = 48;
+    const h = 28;
+    const out = this.makeCanvas(w, h);
+    const ctx = out.getContext('2d')!;
+    this.fillBox(ctx, 3, h - 4, w - 6, 3, 'rgba(18, 12, 8, 0.34)');
+    const drawLogRow = (y: number, xStart: number, count: number) => {
+      for (let i = 0; i < count; i++) {
+        const lx = xStart + i * 9;
+        this.fillBox(ctx, lx, y, 10, 7, '#3b2514');
+        this.fillBox(ctx, lx + 1, y + 1, 8, 5, '#7c5332');
+        this.fillBox(ctx, lx + 1, y + 1, 6, 2, '#a37148');
+        this.fillBox(ctx, lx + 7, y + 1, 2, 5, '#cfa67a');
+        this.fillBox(ctx, lx + 8, y + 2, 1, 3, '#8f653e');
+      }
+    };
+    drawLogRow(15, 5, 4);
+    drawLogRow(9, 9, 3);
+    drawLogRow(4, 14, 2);
+    // 麻繩捆紮帶
+    this.fillBox(ctx, 16, 4, 2, 18, '#c9ab70');
+    this.fillBox(ctx, 29, 9, 2, 13, '#c9ab70');
+    return out;
+  }
+
+  private static buildCampFirewood(): HTMLCanvasElement {
+    const w = 32;
+    const h = 24;
+    const out = this.makeCanvas(w, h);
+    const ctx = out.getContext('2d')!;
+    this.fillBox(ctx, 4, 18, 24, 4, 'rgba(20, 14, 10, 0.34)');
+    for (const sx of [6, 11, 16, 21]) {
+      this.fillBox(ctx, sx, 16, 5, 4, '#595e61');
+      this.fillBox(ctx, sx + 1, 16, 3, 2, '#8b9296');
+    }
+    this.fillBox(ctx, 7, 13, 18, 4, '#4a2e18');
+    this.fillBox(ctx, 9, 10, 14, 4, '#6e4626');
+    this.fillBox(ctx, 12, 7, 8, 4, '#8c5c34');
+    this.fillBox(ctx, 14, 9, 4, 5, '#ff8c2e');
+    this.fillBox(ctx, 15, 10, 2, 3, '#ffe266');
+    return out;
+  }
+
   private static buildCottageSteppingStones(): HTMLCanvasElement {
     const w = 42;
     const h = 26;
@@ -1460,10 +1531,7 @@ export class OriginalArtLoader {
     }
     return out;
   }
-  /**
-   * 組裝自然不規則輪廓的江南粉牆黛瓦鄉村小屋：
-   * 含高低不對稱馬頭牆、小青磚煙囪、微弧飛簷、側廂木披簷（掛玉米／柴垛／青釉水缸）、外伸青石踏步與牆根野草花叢
-   */
+
   private static buildCleanJiangnanCottage(
     jiangnanImg: HTMLImageElement | HTMLCanvasElement | null,
     cottageStyle: 'village' | 'scholar' = 'village',
@@ -1478,18 +1546,18 @@ export class OriginalArtLoader {
     const leanX = mainX + mainW - 2;
     const leanW = 24;
     const baseBot = h - 7;
-    // 1. 分層柔和接地陰影
+
     this.fillBox(ctx, mainX - 2, baseBot - 1, mainW + leanW + 4, 6, 'rgba(16, 14, 10, 0.22)');
     this.fillBox(ctx, mainX + 2, baseBot, mainW - 2, 4, 'rgba(16, 14, 10, 0.34)');
     this.fillBox(ctx, leanX + 1, baseBot - 1, leanW - 3, 3, 'rgba(16, 14, 10, 0.30)');
-    // 2. 左坡青磚煙囪
+
     const chimX = mainX + 18;
     this.fillBox(ctx, chimX, 4, 9, 13, '#2d3338');
     this.fillBox(ctx, chimX + 1, 5, 7, 11, '#6c7378');
     this.fillBox(ctx, chimX + 1, 5, 3, 9, '#9aa1a6');
     this.fillBox(ctx, chimX - 1, 3, 11, 2, '#3b4247');
     this.fillBox(ctx, chimX, 3, 8, 1, '#b8bfba');
-    // 3. 右側不對稱低矮木構披簷
+
     for (let x = leanX; x < leanX + leanW; x++) {
       const drop = Math.floor((x - leanX) * 0.28);
       const rTop = 25 + drop;
@@ -1501,7 +1569,7 @@ export class OriginalArtLoader {
     this.fillBox(ctx, leanX + 2, 37, leanW - 6, baseBot - 38, '#332419');
     this.fillBox(ctx, leanX + 3, 39, leanW - 8, baseBot - 40, '#5e4632');
     this.fillBox(ctx, leanX + leanW - 6, 36, 3, baseBot - 36, '#3d2a1d');
-    this.fillBox(ctx, leanX + leanW - 5, 37, 1, baseBot - 38, '#75533a');
+
     if (cottageStyle === 'village') {
       for (const cxCorn of [leanX + 7, leanX + 12]) {
         this.fillBox(ctx, cxCorn, 37, 2, 2, '#6b5322');
@@ -1509,27 +1577,20 @@ export class OriginalArtLoader {
         this.fillBox(ctx, cxCorn, 40, 1, 5, '#ffe278');
       }
       this.fillBox(ctx, leanX + 4, baseBot - 9, 10, 8, '#4a3321');
-      for (let lx = leanX + 5; lx <= leanX + 11; lx += 3) {
-        this.fillBox(ctx, lx, baseBot - 8, 2, 2, '#9c7850');
-        this.fillBox(ctx, lx, baseBot - 5, 2, 2, '#9c7850');
-      }
       this.fillBox(ctx, leanX + 13, baseBot - 11, 10, 11, '#263336');
       this.fillBox(ctx, leanX + 14, baseBot - 10, 8, 9, '#4f6e73');
-      this.fillBox(ctx, leanX + 15, baseBot - 9, 3, 6, '#7aa0a6');
-      this.fillBox(ctx, leanX + 13, baseBot - 11, 10, 2, '#33474a');
     } else {
       this.fillBox(ctx, leanX + 3, 39, leanW - 9, baseBot - 41, '#dfd9cc');
       this.fillBox(ctx, leanX + 6, 43, 8, 9, '#4a3525');
       this.fillBox(ctx, leanX + 12, baseBot - 12, 8, 6, '#638c52');
-      this.fillBox(ctx, leanX + 13, baseBot - 7, 7, 7, '#5c7a82');
     }
-    // 4. 主屋粉牆與毛石牆裙
+
     const wallSample = jiangnanImg
       ? this.extractNormalizedSubCanvas(jiangnanImg, 0.39, 0.555, 0.09, 0.048, false)
       : null;
-    this.fillBox(ctx, mainX, 34, mainW, baseBot - 34, '#ede8de');
+    this.fillBox(ctx, mainX, 34, mainW, baseBot - 34, '#f2eee4');
     if (wallSample) {
-      ctx.globalAlpha = 0.4;
+      ctx.globalAlpha = 0.42;
       ctx.drawImage(
         wallSample,
         0,
@@ -1543,8 +1604,6 @@ export class OriginalArtLoader {
       );
       ctx.globalAlpha = 1;
     }
-    this.fillBox(ctx, mainX + 8, 48, 12, 8, 'rgba(165, 158, 144, 0.25)');
-    this.fillBox(ctx, mainX + mainW - 22, 46, 14, 9, 'rgba(165, 158, 144, 0.22)');
     this.fillBox(ctx, mainX, 33, mainW, 2, '#453124');
     this.fillBox(ctx, mainX, 35, mainW, 4, 'rgba(18, 14, 12, 0.30)');
     this.fillBox(ctx, mainX, baseBot - 7, mainW, 7, '#757c80');
@@ -1553,7 +1612,7 @@ export class OriginalArtLoader {
       this.fillBox(ctx, sx, baseBot - 6, 7, sh, (sx / 9) % 2 === 0 ? '#969ea1' : '#858d91');
       this.fillBox(ctx, sx + 7, baseBot - 6, 1, 6, '#585e61');
     }
-    // 5. 微弧黛瓦屋頂與上翹飛簷角
+
     const roofLeft = mainX - 5;
     const roofRight = mainX + mainW + 4;
     const roofSample = jiangnanImg
@@ -1588,32 +1647,27 @@ export class OriginalArtLoader {
     }
     this.fillBox(ctx, Math.round(roofMid) - 4, 7, 8, 4, '#333b42');
     this.fillBox(ctx, Math.round(roofMid) - 2, 8, 4, 2, '#9aa6b0');
-    // 6. 高低不對稱階梯馬頭牆
+
     const drawMatou = (gx: number, tallSide: boolean) => {
       const top1 = tallSide ? 5 : 8;
       const top2 = tallSide ? 15 : 17;
       this.fillBox(ctx, gx, top1, 5, baseBot - top1, '#f2eee6');
       this.fillBox(ctx, gx - 2, top1 - 1, 9, 2, '#303840');
       this.fillBox(ctx, gx - 1, top2, 8, 2, '#303840');
-      this.fillBox(ctx, gx - 2, top1 - 2, 2, 1, '#303840');
       this.fillBox(ctx, gx, baseBot - 7, 5, 7, '#6f7578');
       this.fillBox(ctx, tallSide ? gx : gx + 4, top1, 1, baseBot - top1, '#3d3834');
     };
     drawMatou(mainX - 1, true);
     drawMatou(mainX + mainW - 4, false);
-    // 7. 木門、外伸踏步、紅燈籠與木格花窗
+
     const doorX = mainX + 35;
     this.fillBox(ctx, doorX - 6, 34, 2, baseBot - 39, '#4d3729');
     this.fillBox(ctx, doorX + 20, 34, 2, baseBot - 39, '#4d3729');
     this.fillBox(ctx, doorX, 39, 16, baseBot - 39, '#382519');
     this.fillBox(ctx, doorX + 2, 41, 5, baseBot - 42, '#6e4d36');
     this.fillBox(ctx, doorX + 9, 41, 5, baseBot - 42, '#6e4d36');
-    this.fillBox(ctx, doorX + 5, 50, 1, 2, '#cfa968');
-    this.fillBox(ctx, doorX + 10, 50, 1, 2, '#cfa968');
     this.fillBox(ctx, doorX - 2, baseBot - 2, 20, 4, '#5c6266');
     this.fillBox(ctx, doorX - 1, baseBot - 2, 18, 2, '#babfc2');
-    this.fillBox(ctx, doorX + 1, baseBot + 2, 14, 3, '#8b9296');
-    this.fillBox(ctx, doorX + 2, baseBot + 2, 11, 1, '#d4d9db');
     this.fillBox(ctx, doorX - 4, 35, 1, 3, '#3d281a');
     this.fillBox(ctx, doorX - 6, 38, 5, 5, '#c92e22');
     this.fillBox(ctx, doorX - 5, 39, 3, 3, '#ffcf66');
@@ -1624,43 +1678,36 @@ export class OriginalArtLoader {
       this.fillBox(ctx, wx + 2, 46, 10, 2, '#5c4332');
       this.fillBox(ctx, wx - 1, 53, 16, 2, '#8f8b82');
     }
-    // 8. 牆邊自然雜草花叢
-    for (const [gx, gw] of [
-      [mainX - 3, 15],
-      [mainX + 24, 10],
-      [mainX + 68, 16],
-      [leanX + 15, 12]
-    ]) {
-      for (let x = gx; x < gx + gw; x++) {
-        const n = this.pixelNoise(x, 313, 17);
-        const gh = 2 + (n % 5);
-        this.fillBox(ctx, x, baseBot + 1 - gh, 1, gh + 1, n % 2 === 0 ? '#4d7836' : '#659444');
-      }
-      this.fillBox(ctx, gx + Math.floor(gw / 2), baseBot - 3, 2, 2, '#fff0b8');
-    }
     return out;
   }
-  private static buildPalaceTileset(
+
+  private static buildPalaceTilesetBySize(
     scene: Phaser.Scene,
+    targetKey: string,
+    S: number,
     palaceImg: HTMLImageElement | HTMLCanvasElement | null,
     jiangnanImg: HTMLImageElement | HTMLCanvasElement | null,
     campImg: HTMLImageElement | HTMLCanvasElement | null
   ): void {
-    const S = TILE_SIZE;
     const sheetCols = 8;
     const sheetRows = 12;
-    if (scene.textures.exists('palace_tiles')) scene.textures.remove('palace_tiles');
-    if (scene.textures.exists('palace_tiles_hd_raw')) scene.textures.remove('palace_tiles_hd_raw');
-    const rawTex = scene.textures.createCanvas('palace_tiles_hd_raw', sheetCols * S, sheetRows * S);
+    const rawCanvasKey = `${targetKey}_raw_canvas`;
+    if (scene.textures.exists(targetKey)) scene.textures.remove(targetKey);
+    if (scene.textures.exists(rawCanvasKey)) scene.textures.remove(rawCanvasKey);
+
+    const rawTex = scene.textures.createCanvas(rawCanvasKey, sheetCols * S, sheetRows * S);
     if (!rawTex) return;
     const ctx = rawTex.getContext();
     ctx.imageSmoothingEnabled = false;
+    const kScale = S / 24;
+
     const putTileCanvas = (tileIdx: number, tileCanvas: HTMLCanvasElement) => {
       const dx = (tileIdx % sheetCols) * S;
       const dy = Math.floor(tileIdx / sheetCols) * S;
       ctx.clearRect(dx, dy, S, S);
       ctx.drawImage(tileCanvas, 0, 0, tileCanvas.width, tileCanvas.height, dx, dy, S, S);
     };
+
     const putGridTile = (
       tileIdx: number,
       src: HTMLImageElement | HTMLCanvasElement | null,
@@ -1672,7 +1719,7 @@ export class OriginalArtLoader {
       rSpan = 1,
       inset = 4,
       transparent = false,
-      fallbackColor = '#7d8488'
+      fallbackColor = '#8c7d6b'
     ) => {
       if (!src) {
         putTileCanvas(tileIdx, this.makeSolidFallbackTile(S, fallbackColor));
@@ -1683,64 +1730,84 @@ export class OriginalArtLoader {
         this.extractGridSubCanvas(src, gCols, gRows, c, r, cSpan, rSpan, inset, transparent)
       );
     };
-    // 1. 宮廷灰磚家族（100% 保持標題已核准的連續石磚不變）
+
+    // 1. 宮廷暖砂青石磚家族（呼應上傳紫禁城圖片之溫潤古石色調）
     const baseBrick = palaceImg
       ? this.extractGridSubCanvas(palaceImg, 8, 10, 1, 5, 1, 1, 4.5, false)
-      : this.makeSolidFallbackTile(S, '#8f969a');
-    putTileCanvas(TileIndex.COURTYARD_BRICK_A, this.makeSeamlessFamilyVariant(baseBrick, S, {}));
+      : this.makeSolidFallbackTile(S, '#988874');
+    const warmTone = { mulR: 1.06, mulG: 1.0, mulB: 0.92 };
+
+    putTileCanvas(TileIndex.COURTYARD_BRICK_A, this.makeSeamlessFamilyVariant(baseBrick, S, warmTone));
     putTileCanvas(
       TileIndex.COURTYARD_BRICK_B,
-      this.makeSeamlessFamilyVariant(baseBrick, S, { shiftX: 12, addLum: -3 })
+      this.makeSeamlessFamilyVariant(baseBrick, S, { ...warmTone, shiftX: Math.round(12 * kScale), addLum: -3 })
     );
     putTileCanvas(
       TileIndex.COURTYARD_BRICK_C,
-      this.makeSeamlessFamilyVariant(baseBrick, S, { flipX: true, addLum: 3 })
+      this.makeSeamlessFamilyVariant(baseBrick, S, { ...warmTone, flipX: true, addLum: 3 })
     );
     putTileCanvas(
       ExtraTileIndex.COURTYARD_BRICK_D,
-      this.makeSeamlessFamilyVariant(baseBrick, S, { shiftX: 6, shiftY: 12, addLum: -2 })
+      this.makeSeamlessFamilyVariant(baseBrick, S, {
+        ...warmTone,
+        shiftX: Math.round(6 * kScale),
+        shiftY: Math.round(12 * kScale),
+        addLum: -2
+      })
     );
     putTileCanvas(
       ExtraTileIndex.COURTYARD_BRICK_E,
       this.makeSeamlessFamilyVariant(baseBrick, S, {
         flipX: true,
-        shiftX: 12,
-        mulR: 0.98,
+        shiftX: Math.round(12 * kScale),
+        mulR: 1.04,
         mulG: 1.0,
-        mulB: 1.02
+        mulB: 0.94
       })
     );
     putTileCanvas(
       ExtraTileIndex.COURTYARD_BRICK_F,
-      this.makeSeamlessFamilyVariant(baseBrick, S, { shiftY: 12, addLum: 2 })
+      this.makeSeamlessFamilyVariant(baseBrick, S, { ...warmTone, shiftY: Math.round(12 * kScale), addLum: 2 })
     );
-    // 2. 連續漢白玉御道家族（100% 保持標題與御道本體連續無縫）
+
+    // 2. 漢白玉御道與雲龍丹陛石雕（S=48 時保留雙倍石雕紋理）
     const rawPaleStone = palaceImg
       ? this.extractGridSubCanvas(palaceImg, 8, 10, 0, 5, 1, 1, 10, false)
       : this.makeSolidFallbackTile(S, '#ebe6dc');
-    const seamlessMarbleBase = this.makeToroidalSeamless(rawPaleStone, S, 5);
+    const seamlessMarbleBase = this.makeToroidalSeamless(rawPaleStone, S, Math.round(5 * kScale));
+
     const buildSmoothMarbleSlab = (vt: VariantTransform, jointOffset: number) => {
       const slab = this.makeSeamlessFamilyVariant(seamlessMarbleBase, S, {
         ...vt,
         mulR: 1.12,
-        mulG: 1.11,
-        mulB: 1.08,
-        addLum: (vt.addLum ?? 0) + 12
+        mulG: 1.1,
+        mulB: 1.05,
+        addLum: (vt.addLum ?? 0) + 10
       });
       const mCtx = slab.getContext('2d')!;
-      this.fillBox(mCtx, 0, 11, S, 1, 'rgba(202, 194, 178, 0.24)');
-      this.fillBox(mCtx, jointOffset % S, 0, 1, 11, 'rgba(202, 194, 178, 0.24)');
-      this.fillBox(mCtx, (jointOffset + 12) % S, 12, 1, 12, 'rgba(202, 194, 178, 0.24)');
-      this.fillBox(mCtx, 0, 12, S, 1, 'rgba(255, 255, 255, 0.22)');
+      const midY = Math.floor(S / 2);
+      const j1 = Math.round(jointOffset * kScale) % S;
+      const j2 = Math.round((jointOffset + 12) * kScale) % S;
+      this.fillBox(mCtx, 0, midY - 1, S, 1, 'rgba(198, 188, 168, 0.28)');
+      this.fillBox(mCtx, j1, 0, 1, midY - 1, 'rgba(198, 188, 168, 0.28)');
+      this.fillBox(mCtx, j2, midY, 1, S - midY, 'rgba(198, 188, 168, 0.28)');
+      this.fillBox(mCtx, 0, midY, S, 1, 'rgba(255, 255, 255, 0.24)');
       return slab;
     };
+
     putTileCanvas(TileIndex.MARBLE_PATH_A, buildSmoothMarbleSlab({}, 6));
-    putTileCanvas(TileIndex.MARBLE_PATH_B, buildSmoothMarbleSlab({ shiftX: 8, addLum: -1 }, 14));
-    putTileCanvas(ExtraTileIndex.MARBLE_PATH_C, buildSmoothMarbleSlab({ shiftY: 8, addLum: 1 }, 10));
-    putTileCanvas(ExtraTileIndex.MARBLE_PATH_D, buildSmoothMarbleSlab({ shiftX: 12, shiftY: 12 }, 18));
+    putTileCanvas(TileIndex.MARBLE_PATH_B, buildSmoothMarbleSlab({ shiftX: Math.round(8 * kScale), addLum: -1 }, 14));
+    putTileCanvas(ExtraTileIndex.MARBLE_PATH_C, buildSmoothMarbleSlab({ shiftY: Math.round(8 * kScale), addLum: 1 }, 10));
+    putTileCanvas(
+      ExtraTileIndex.MARBLE_PATH_D,
+      buildSmoothMarbleSlab({ shiftX: Math.round(12 * kScale), shiftY: Math.round(12 * kScale) }, 18)
+    );
+
     const buildHarmonizedMarbleRelief = (medallion: boolean) => {
       const base = buildSmoothMarbleSlab({}, 8);
       const rCtx = base.getContext('2d')!;
+      const pad = Math.round(2 * kScale);
+      const inner = S - pad * 2;
       if (palaceImg) {
         const rawCarve = this.extractGridSubCanvas(
           palaceImg,
@@ -1750,37 +1817,39 @@ export class OriginalArtLoader {
           7,
           1,
           1,
-          5,
+          4,
           false
         );
-        const tmp = this.makeCanvas(S - 4, S - 4);
+        const tmp = this.makeCanvas(inner, inner);
         const tCtx = tmp.getContext('2d', { willReadFrequently: true })!;
-        tCtx.drawImage(rawCarve, 0, 0, rawCarve.width, rawCarve.height, 0, 0, S - 4, S - 4);
-        const imgD = tCtx.getImageData(0, 0, S - 4, S - 4);
+        tCtx.drawImage(rawCarve, 0, 0, rawCarve.width, rawCarve.height, 0, 0, inner, inner);
+        const imgD = tCtx.getImageData(0, 0, inner, inner);
         const d = imgD.data;
         for (let i = 0; i < d.length; i += 4) {
           const lum = (d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114) / 255;
-          const mapped = 214 + lum * 34;
-          d[i] = Math.min(255, Math.round(mapped + 3));
+          const mapped = 196 + lum * 54;
+          d[i] = Math.min(255, Math.round(mapped + 4));
           d[i + 1] = Math.min(255, Math.round(mapped));
-          d[i + 2] = Math.min(255, Math.round(mapped - 8));
+          d[i + 2] = Math.min(255, Math.round(mapped - 10));
         }
         tCtx.putImageData(imgD, 0, 0);
-        rCtx.drawImage(tmp, 2, 2);
+        rCtx.drawImage(tmp, pad, pad);
       }
-      rCtx.strokeStyle = 'rgba(196, 188, 170, 0.45)';
-      rCtx.lineWidth = 1;
-      rCtx.strokeRect(2.5, 2.5, S - 5, S - 5);
+      rCtx.strokeStyle = 'rgba(168, 156, 134, 0.55)';
+      rCtx.lineWidth = Math.max(1, kScale);
+      rCtx.strokeRect(pad + 0.5, pad + 0.5, inner - 1, inner - 1);
       return base;
     };
+
     putTileCanvas(TileIndex.MARBLE_DRAGON_CARVING, buildHarmonizedMarbleRelief(false));
     putTileCanvas(ExtraTileIndex.CARVED_MEDALLION_STONE, buildHarmonizedMarbleRelief(true));
     putGridTile(TileIndex.MARBLE_STAIR, palaceImg, 8, 10, 2, 8, 1, 1.85, 4, false);
+
     // 3. 殿內蘇州金磚家族
     const rawHallBrick = palaceImg
       ? this.extractGridSubCanvas(palaceImg, 8, 10, 3, 6, 1, 1, 4.5, false)
       : this.makeSolidFallbackTile(S, '#8a6d4b');
-    const baseHallTile = this.makeToroidalSeamless(rawHallBrick, S, 3);
+    const baseHallTile = this.makeToroidalSeamless(rawHallBrick, S, Math.round(3 * kScale));
     putTileCanvas(TileIndex.HALL_GOLD_BRICK_A, this.makeSeamlessFamilyVariant(baseHallTile, S, {}));
     putTileCanvas(
       TileIndex.HALL_GOLD_BRICK_B,
@@ -1797,12 +1866,21 @@ export class OriginalArtLoader {
     {
       const carpet = this.makeSeamlessFamilyVariant(baseHallTile, S, {});
       const cCtx = carpet.getContext('2d')!;
+      const borderW = Math.round(3 * kScale);
       this.fillBox(cCtx, 0, 0, S, S, 'rgba(154, 26, 20, 0.86)');
-      this.fillBox(cCtx, 0, 0, 3, S, '#e6b43c');
-      this.fillBox(cCtx, S - 3, 0, 3, S, '#e6b43c');
-      this.fillBox(cCtx, 9, 9, 6, 6, 'rgba(255, 220, 110, 0.40)');
+      this.fillBox(cCtx, 0, 0, borderW, S, '#e6b43c');
+      this.fillBox(cCtx, S - borderW, 0, borderW, S, '#e6b43c');
+      this.fillBox(
+        cCtx,
+        Math.round(9 * kScale),
+        Math.round(9 * kScale),
+        Math.round(6 * kScale),
+        Math.round(6 * kScale),
+        'rgba(255, 220, 110, 0.42)'
+      );
       putTileCanvas(TileIndex.RED_CARPET_CENTER, carpet);
     }
+
     // 4. 江南純淨連續草地家族
     const rawGrassA = jiangnanImg
       ? this.extractGridSubCanvas(jiangnanImg, 8, 12, 0, 2, 1, 1, 5, false)
@@ -1813,28 +1891,46 @@ export class OriginalArtLoader {
     const cleanGrassA = this.purifyPureGrassPatch(rawGrassA, S);
     const cleanGrassB = this.purifyPureGrassPatch(rawGrassB, S);
     putTileCanvas(TileIndex.GRASS_A, this.makeSeamlessFamilyVariant(cleanGrassA, S, {}));
-    putTileCanvas(TileIndex.GRASS_B, this.makeSeamlessFamilyVariant(cleanGrassB, S, { shiftX: 8 }));
+    putTileCanvas(
+      TileIndex.GRASS_B,
+      this.makeSeamlessFamilyVariant(cleanGrassB, S, { shiftX: Math.round(8 * kScale) })
+    );
     putTileCanvas(
       ExtraTileIndex.GRASS_C,
-      this.makeSeamlessFamilyVariant(cleanGrassA, S, { shiftX: 12, shiftY: 8, addLum: -1 })
+      this.makeSeamlessFamilyVariant(cleanGrassA, S, {
+        shiftX: Math.round(12 * kScale),
+        shiftY: Math.round(8 * kScale),
+        addLum: -1
+      })
     );
     putTileCanvas(
       ExtraTileIndex.GRASS_D,
-      this.makeSeamlessFamilyVariant(cleanGrassB, S, { flipX: true, shiftY: 12, addLum: 1 })
+      this.makeSeamlessFamilyVariant(cleanGrassB, S, {
+        flipX: true,
+        shiftY: Math.round(12 * kScale),
+        addLum: 1
+      })
     );
     putTileCanvas(
       ExtraTileIndex.GRASS_E,
-      this.makeSeamlessFamilyVariant(cleanGrassA, S, { flipX: true, shiftX: 6, shiftY: 14 })
+      this.makeSeamlessFamilyVariant(cleanGrassA, S, {
+        flipX: true,
+        shiftX: Math.round(6 * kScale),
+        shiftY: Math.round(14 * kScale)
+      })
     );
     {
-      const flowerGrass = this.makeSeamlessFamilyVariant(cleanGrassB, S, { shiftX: 4 });
+      const flowerGrass = this.makeSeamlessFamilyVariant(cleanGrassB, S, {
+        shiftX: Math.round(4 * kScale)
+      });
       const fgCtx = flowerGrass.getContext('2d')!;
-      this.fillBox(fgCtx, 6, 7, 2, 2, '#fff5c8');
-      this.fillBox(fgCtx, 7, 8, 1, 1, '#e89a2c');
-      this.fillBox(fgCtx, 16, 15, 2, 2, '#ffd6e2');
+      const dot = Math.max(2, Math.round(2 * kScale));
+      this.fillBox(fgCtx, Math.round(6 * kScale), Math.round(7 * kScale), dot, dot, '#fff5c8');
+      this.fillBox(fgCtx, Math.round(16 * kScale), Math.round(15 * kScale), dot, dot, '#ffd6e2');
       putTileCanvas(TileIndex.GRASS_FLOWER, flowerGrass);
     }
-    // 5. 連續黃土路、沙地與微弧自然田壟旱田
+
+    // 5. 黃土路、沙地與微弧自然田壟旱田
     const rawEarth = jiangnanImg
       ? this.extractNormalizedSubCanvas(jiangnanImg, 0.388, 0.094, 0.098, 0.064, false)
       : this.makeSolidFallbackTile(S, '#aa8c60');
@@ -1842,16 +1938,28 @@ export class OriginalArtLoader {
     putTileCanvas(TileIndex.DIRT_PATH_A, this.makeSeamlessFamilyVariant(seamlessDirt, S, {}));
     putTileCanvas(
       TileIndex.DIRT_PATH_B,
-      this.makeSeamlessFamilyVariant(seamlessDirt, S, { shiftX: 8, shiftY: 6, addLum: -1 })
+      this.makeSeamlessFamilyVariant(seamlessDirt, S, {
+        shiftX: Math.round(8 * kScale),
+        shiftY: Math.round(6 * kScale),
+        addLum: -1
+      })
     );
     putTileCanvas(
       ExtraTileIndex.DIRT_PATH_C,
-      this.makeSeamlessFamilyVariant(seamlessDirt, S, { flipX: true, shiftY: 12, addLum: 1 })
+      this.makeSeamlessFamilyVariant(seamlessDirt, S, {
+        flipX: true,
+        shiftY: Math.round(12 * kScale),
+        addLum: 1
+      })
     );
     putTileCanvas(
       ExtraTileIndex.DIRT_PATH_D,
-      this.makeSeamlessFamilyVariant(seamlessDirt, S, { flipY: true, shiftX: 14 })
+      this.makeSeamlessFamilyVariant(seamlessDirt, S, {
+        flipY: true,
+        shiftX: Math.round(14 * kScale)
+      })
     );
+
     const makeSand = (vt: VariantTransform) =>
       this.makeSeamlessFamilyVariant(seamlessDirt, S, {
         ...vt,
@@ -1861,96 +1969,118 @@ export class OriginalArtLoader {
         addLum: (vt.addLum ?? 0) + 9
       });
     putTileCanvas(TileIndex.SAND_A, makeSand({}));
-    putTileCanvas(TileIndex.SAND_B, makeSand({ shiftX: 10, shiftY: 6, addLum: -1 }));
-    putTileCanvas(ExtraTileIndex.SAND_C, makeSand({ flipX: true, shiftY: 12, addLum: 1 }));
-    putTileCanvas(ExtraTileIndex.SAND_D, makeSand({ flipY: true, shiftX: 14 }));
+    putTileCanvas(
+      TileIndex.SAND_B,
+      makeSand({ shiftX: Math.round(10 * kScale), shiftY: Math.round(6 * kScale), addLum: -1 })
+    );
+    putTileCanvas(
+      ExtraTileIndex.SAND_C,
+      makeSand({ flipX: true, shiftY: Math.round(12 * kScale), addLum: 1 })
+    );
+    putTileCanvas(
+      ExtraTileIndex.SAND_D,
+      makeSand({ flipY: true, shiftX: Math.round(14 * kScale) })
+    );
+
     const makeDryFarmland = (shift: number, flipX: boolean) => {
       const farm = this.makeSeamlessFamilyVariant(seamlessDirt, S, {
         flipX,
-        shiftX: shift,
+        shiftX: Math.round(shift * kScale),
         mulR: 0.93,
         mulG: 0.88,
         mulB: 0.8
       });
       const fCtx = farm.getContext('2d')!;
+      const ridgeH = Math.max(2, Math.round(2 * kScale));
       for (let x = 0; x < S; x++) {
-        const y1 = 4 + Math.round(Math.sin((x / S) * Math.PI * 2) * 1.1);
-        const y2 = 15 + Math.round(Math.sin(((x + 6) / S) * Math.PI * 2) * 1.1);
-        this.fillBox(fCtx, x, y1 - 1, 1, 2, 'rgba(212, 178, 130, 0.32)');
-        this.fillBox(fCtx, x, y2 - 1, 1, 2, 'rgba(212, 178, 130, 0.32)');
-        this.fillBox(fCtx, x, y1 + 1, 1, 2, 'rgba(66, 40, 18, 0.44)');
-        this.fillBox(fCtx, x, y2 + 1, 1, 2, 'rgba(66, 40, 18, 0.44)');
+        const y1 = Math.round(4 * kScale + Math.sin((x / S) * Math.PI * 2) * 1.1 * kScale);
+        const y2 = Math.round(
+          15 * kScale + Math.sin(((x + 6 * kScale) / S) * Math.PI * 2) * 1.1 * kScale
+        );
+        this.fillBox(fCtx, x, y1 - 1, 1, ridgeH, 'rgba(212, 178, 130, 0.34)');
+        this.fillBox(fCtx, x, y2 - 1, 1, ridgeH, 'rgba(212, 178, 130, 0.34)');
+        this.fillBox(fCtx, x, y1 + 1, 1, ridgeH, 'rgba(66, 40, 18, 0.44)');
+        this.fillBox(fCtx, x, y2 + 1, 1, ridgeH, 'rgba(66, 40, 18, 0.44)');
       }
-      this.fillBox(fCtx, (5 + shift) % 18, 8, 2, 2, 'rgba(72, 44, 20, 0.38)');
-      this.fillBox(fCtx, (14 + shift) % 19, 19, 2, 2, 'rgba(72, 44, 20, 0.38)');
-      this.fillBox(fCtx, (7 + shift) % 20, 3, 2, 2, '#7b8c42');
-      this.fillBox(fCtx, (15 + shift) % 20, 14, 2, 2, '#918a46');
       return farm;
     };
     putTileCanvas(TileIndex.DRY_FARMLAND_A, makeDryFarmland(0, false));
     putTileCanvas(TileIndex.DRY_FARMLAND_B, makeDryFarmland(7, true));
     putTileCanvas(ExtraTileIndex.DRY_FARMLAND_C, makeDryFarmland(13, false));
     putTileCanvas(ExtraTileIndex.DRY_FARMLAND_D, makeDryFarmland(17, true));
-    // 6. 水紋、自然參差石駁岸、石拱橋面、沿岸青石路與木棧道
+
+    // 6. 水紋、石駁岸、荷池、石拱橋面、青石岸與木棧道
     const rawWater = jiangnanImg
       ? this.extractGridSubCanvas(jiangnanImg, 8, 12, 6, 0, 1, 1, 5, false)
       : this.makeSolidFallbackTile(S, '#3b7c96');
-    const baseWater = this.makeToroidalSeamless(rawWater, S, 4);
+    const baseWater = this.makeToroidalSeamless(rawWater, S, Math.round(4 * kScale));
     putTileCanvas(TileIndex.WATER_1, this.makeSeamlessFamilyVariant(baseWater, S, {}));
     putTileCanvas(
       TileIndex.WATER_2,
-      this.makeSeamlessFamilyVariant(baseWater, S, { shiftX: 8, shiftY: 4, addLum: 1 })
+      this.makeSeamlessFamilyVariant(baseWater, S, {
+        shiftX: Math.round(8 * kScale),
+        shiftY: Math.round(4 * kScale),
+        addLum: 1
+      })
     );
     putTileCanvas(
       TileIndex.WATER_3,
-      this.makeSeamlessFamilyVariant(baseWater, S, { shiftX: 16, shiftY: 8, addLum: -1 })
+      this.makeSeamlessFamilyVariant(baseWater, S, {
+        shiftX: Math.round(16 * kScale),
+        shiftY: Math.round(8 * kScale),
+        addLum: -1
+      })
     );
     putTileCanvas(
       ExtraTileIndex.WATER_4,
-      this.makeSeamlessFamilyVariant(baseWater, S, { flipX: true, shiftX: 6 })
+      this.makeSeamlessFamilyVariant(baseWater, S, { flipX: true, shiftX: Math.round(6 * kScale) })
     );
     {
       const bank = this.makeSeamlessFamilyVariant(baseWater, S, {});
       const bCtx = bank.getContext('2d')!;
       for (let x = 0; x < S; x++) {
-        const n = this.pixelNoise(x, 19, 83);
-        const stoneH = 6 + (x % 8 === 0 ? -1 : n % 3);
+        const n = this.pixelNoise(Math.floor(x / kScale), 19, 83);
+        const stoneH = Math.round((6 + (Math.floor(x / kScale) % 8 === 0 ? -1 : n % 3)) * kScale);
         this.fillBox(bCtx, x, 0, 1, stoneH, '#5c6668');
-        this.fillBox(bCtx, x, 0, 1, Math.max(2, stoneH - 2), x % 6 < 3 ? '#9ca4a2' : '#899190');
-        if (n % 5 === 0) this.fillBox(bCtx, x, 0, 1, 2, '#588040');
-        this.fillBox(bCtx, x, stoneH, 1, 2, 'rgba(18, 44, 58, 0.42)');
+        this.fillBox(
+          bCtx,
+          x,
+          0,
+          1,
+          Math.max(2, stoneH - Math.round(2 * kScale)),
+          Math.floor(x / kScale) % 6 < 3 ? '#9ca4a2' : '#899190'
+        );
+        this.fillBox(bCtx, x, stoneH, 1, Math.round(2 * kScale), 'rgba(18, 44, 58, 0.42)');
       }
       putTileCanvas(TileIndex.WATER_BANK_TOP, bank);
     }
     {
-      const leafTile = this.makeSeamlessFamilyVariant(baseWater, S, {});
-      const lCtx = leafTile.getContext('2d')!;
+      const leaf24 = this.makeCanvas(24, 24);
+      const lCtx = leaf24.getContext('2d')!;
+      lCtx.drawImage(baseWater, 0, 0, baseWater.width, baseWater.height, 0, 0, 24, 24);
       this.fillBox(lCtx, 5, 9, 15, 10, 'rgba(16, 42, 52, 0.34)');
       this.fillBox(lCtx, 5, 7, 14, 10, '#255e36');
       this.fillBox(lCtx, 4, 6, 14, 9, '#3b8c50');
       this.fillBox(lCtx, 6, 5, 10, 11, '#3b8c50');
       this.fillBox(lCtx, 10, 9, 3, 2, '#6ec480');
-      putTileCanvas(TileIndex.LOTUS_LEAF, leafTile);
-      const flowerTile = this.makeCanvas(S, S);
-      const flCtx = flowerTile.getContext('2d')!;
-      flCtx.drawImage(leafTile, 0, 0);
+      putTileCanvas(TileIndex.LOTUS_LEAF, leaf24);
+
+      const flower24 = this.makeCanvas(24, 24);
+      const flCtx = flower24.getContext('2d')!;
+      flCtx.drawImage(leaf24, 0, 0);
       this.fillBox(flCtx, 7, 4, 10, 7, '#e8688c');
       this.fillBox(flCtx, 8, 3, 8, 6, '#ffa8c2');
       this.fillBox(flCtx, 10, 2, 4, 4, '#ffe3ec');
       this.fillBox(flCtx, 11, 5, 2, 2, '#f5c842');
-      putTileCanvas(TileIndex.LOTUS_FLOWER, flowerTile);
+      putTileCanvas(TileIndex.LOTUS_FLOWER, flower24);
     }
+
     const rawBridgeCenter = jiangnanImg
       ? this.extractNormalizedSubCanvas(jiangnanImg, 0.538, 0.258, 0.052, 0.068, false)
       : baseBrick;
-    const cleanBridgeDeck = this.makeToroidalSeamless(rawBridgeCenter, S, 3);
-    {
-      const bCtx = cleanBridgeDeck.getContext('2d')!;
-      this.fillBox(bCtx, 0, 7, S, 1, 'rgba(120, 116, 108, 0.28)');
-      this.fillBox(bCtx, 0, 15, S, 1, 'rgba(120, 116, 108, 0.28)');
-      this.fillBox(bCtx, 0, 23, S, 1, 'rgba(120, 116, 108, 0.28)');
-    }
+    const cleanBridgeDeck = this.makeToroidalSeamless(rawBridgeCenter, S, Math.round(3 * kScale));
     putTileCanvas(TileIndex.STONE_BRIDGE_DECK, cleanBridgeDeck);
+
     const makeCoastStone = (vt: VariantTransform) =>
       this.makeSeamlessFamilyVariant(baseBrick, S, {
         ...vt,
@@ -1960,12 +2090,16 @@ export class OriginalArtLoader {
         addLum: (vt.addLum ?? 0) + 6
       });
     putTileCanvas(TileIndex.STONE_PAVING, makeCoastStone({}));
-    putTileCanvas(ExtraTileIndex.STONE_PAVING_B, makeCoastStone({ shiftX: 12, addLum: -2 }));
+    putTileCanvas(
+      ExtraTileIndex.STONE_PAVING_B,
+      makeCoastStone({ shiftX: Math.round(12 * kScale), addLum: -2 })
+    );
     putTileCanvas(ExtraTileIndex.STONE_PAVING_C, makeCoastStone({ flipX: true, addLum: 2 }));
+
     const rawPierWood = campImg
       ? this.extractNormalizedSubCanvas(campImg, 0.262, 0.568, 0.106, 0.082, false)
       : this.makeSolidFallbackTile(S, '#8a623e');
-    const basePierWood = this.makeToroidalSeamless(rawPierWood, S, 2);
+    const basePierWood = this.makeToroidalSeamless(rawPierWood, S, Math.round(2 * kScale));
     putTileCanvas(TileIndex.WOOD_PIER, this.makeSeamlessFamilyVariant(basePierWood, S, {}));
     putTileCanvas(
       ExtraTileIndex.WOOD_PIER_B,
@@ -1977,21 +2111,22 @@ export class OriginalArtLoader {
     );
     putTileCanvas(
       ExtraTileIndex.WOOD_PIER_D,
-      this.makeSeamlessFamilyVariant(basePierWood, S, { shiftX: 8, addLum: -1 })
+      this.makeSeamlessFamilyVariant(basePierWood, S, { shiftX: Math.round(8 * kScale), addLum: -1 })
     );
+
     // 7. 宮牆、須彌座、琉璃飛簷與圓拱月門
     putGridTile(TileIndex.MARBLE_BALUSTRADE_H, palaceImg, 8, 10, 0, 9, 1, 1, 2, true);
     putGridTile(TileIndex.MARBLE_BALUSTRADE_V, palaceImg, 8, 10, 6, 7, 1, 1, 2, true);
     {
-      const terrace = buildSmoothMarbleSlab({}, 12);
-      const tCtx = terrace.getContext('2d')!;
-      this.fillBox(tCtx, 0, 0, S, 4, '#ffffff');
-      this.fillBox(tCtx, 0, 4, S, 5, '#d8d0c0');
-      this.fillBox(tCtx, 0, 9, S, 6, '#b8b09e');
-      for (let x = 2; x < S - 2; x += 6) this.fillBox(tCtx, x, 10, 4, 4, '#ece6d8');
-      this.fillBox(tCtx, 0, 15, S, 6, '#dfd8c8');
-      this.fillBox(tCtx, 0, 21, S, 3, '#8f8779');
-      putTileCanvas(TileIndex.TERRACE_BASE, terrace);
+      const terrace24 = this.makeCanvas(24, 24);
+      const tCtx = terrace24.getContext('2d')!;
+      this.fillBox(tCtx, 0, 0, 24, 4, '#ffffff');
+      this.fillBox(tCtx, 0, 4, 24, 5, '#d8d0c0');
+      this.fillBox(tCtx, 0, 9, 24, 6, '#b8b09e');
+      for (let x = 2; x < 22; x += 6) this.fillBox(tCtx, x, 10, 4, 4, '#ece6d8');
+      this.fillBox(tCtx, 0, 15, 24, 6, '#dfd8c8');
+      this.fillBox(tCtx, 0, 21, 24, 3, '#8f8779');
+      putTileCanvas(TileIndex.TERRACE_BASE, terrace24);
     }
     putGridTile(TileIndex.RED_WALL_FRIEZE, palaceImg, 8, 10, 2, 0.04, 1, 0.5, 2, true);
     putGridTile(TileIndex.RED_WALL_MID, palaceImg, 8, 10, 3, 0.36, 1, 0.48, 2, false);
@@ -2006,32 +2141,27 @@ export class OriginalArtLoader {
       );
       const wCanvas = this.makeCanvas(S, S);
       const wCtx = wCanvas.getContext('2d')!;
-      wCtx.drawImage(redWallBase, 0, 0, redWallBase.width, redWallBase.height, 0, 0, S, S - 4);
-      this.fillBox(wCtx, 0, S - 5, S, 1, '#731a14');
-      this.fillBox(wCtx, 0, S - 4, S, 2, '#ede7da');
-      this.fillBox(wCtx, 0, S - 2, S, 1, '#cfc8b8');
+      const trim = Math.round(4 * kScale);
+      wCtx.drawImage(redWallBase, 0, 0, redWallBase.width, redWallBase.height, 0, 0, S, S - trim);
+      this.fillBox(wCtx, 0, S - trim - 1, S, 1, '#731a14');
+      this.fillBox(wCtx, 0, S - trim, S, Math.round(2 * kScale), '#ede7da');
+      this.fillBox(wCtx, 0, S - Math.round(2 * kScale), S, Math.round(1 * kScale), '#cfc8b8');
       this.fillBox(wCtx, 0, S - 1, S, 1, '#8c8577');
-      this.fillBox(wCtx, 7, S - 4, 1, 3, '#a8a090');
-      this.fillBox(wCtx, 19, S - 4, 1, 3, '#a8a090');
       putTileCanvas(TileIndex.RED_WALL_BASE, wCanvas);
     } else {
       putTileCanvas(TileIndex.RED_WALL_BASE, this.makeSolidFallbackTile(S, '#96261e'));
     }
+
     putGridTile(TileIndex.PALACE_WINDOW, palaceImg, 8, 10, 4, 7, 1, 1, 3, false);
     putGridTile(ExtraTileIndex.PALACE_WINDOW_B, palaceImg, 8, 10, 5, 7, 1, 1, 3, false);
     putGridTile(TileIndex.GATE_DOOR_LEFT, palaceImg, 8, 10, 6, 6, 1, 1, 3, false);
     putGridTile(TileIndex.GATE_DOOR_RIGHT, palaceImg, 8, 10, 7, 6, 1, 1, 3, false);
     {
-      const moon = this.makeCanvas(S, S);
-      const mCtx = moon.getContext('2d')!;
-      if (palaceImg) {
-        const wSub = this.extractNormalizedSubCanvas(palaceImg, 0.135, 0.382, 0.105, 0.068, false);
-        mCtx.drawImage(wSub, 0, 0, S, S);
-      } else {
-        this.fillBox(mCtx, 0, 0, S, S, '#96261e');
-      }
-      for (let y = 3; y < S; y++) {
-        for (let x = 3; x < S - 3; x++) {
+      const moon24 = this.makeCanvas(24, 24);
+      const mCtx = moon24.getContext('2d')!;
+      this.fillBox(mCtx, 0, 0, 24, 24, '#96261e');
+      for (let y = 3; y < 24; y++) {
+        for (let x = 3; x < 21; x++) {
           const dx = x - 11.5;
           const dy = y - 12;
           const d2 = dx * dx + dy * dy;
@@ -2042,8 +2172,9 @@ export class OriginalArtLoader {
           }
         }
       }
-      putTileCanvas(TileIndex.MOON_GATE, moon);
+      putTileCanvas(TileIndex.MOON_GATE, moon24);
     }
+
     if (palaceImg) {
       putTileCanvas(
         TileIndex.ROOF_GOLD_RIDGE,
@@ -2058,6 +2189,7 @@ export class OriginalArtLoader {
         this.extractNormalizedSubCanvas(palaceImg, 0.25, 0.214, 0.115, 0.066, false)
       );
     }
+
     if (jiangnanImg) {
       putTileCanvas(
         TileIndex.DARK_ROOF_SLOPE,
@@ -2076,11 +2208,12 @@ export class OriginalArtLoader {
       putTileCanvas(TileIndex.DARK_ROOF_EAVE, this.makeSolidFallbackTile(S, '#49535c'));
       putTileCanvas(TileIndex.WHITE_WALL_WINDOW, this.makeSolidFallbackTile(S, '#f0ede6'));
     }
-    // 8. 高對比朱紅單格柱、無方框邊界松樹、柔和橢圓樹蔭與銅香爐
+
+    // 8. 殿柱、樹木、香爐、軍營與道具磚
     {
       const miniPillar = this.makeCanvas(S, S);
-      const tallPillar = this.buildImperialVermilionPillar(false, S, 48);
-      miniPillar.getContext('2d')!.drawImage(tallPillar, 0, 16, S, 32, 0, 0, S, S);
+      const tallPillar = this.buildImperialVermilionPillar(false, 24, 48);
+      miniPillar.getContext('2d')!.drawImage(tallPillar, 0, 16, 24, 32, 0, 0, S, S);
       putTileCanvas(TileIndex.RED_PILLAR, miniPillar);
     }
     if (jiangnanImg) {
@@ -2095,8 +2228,17 @@ export class OriginalArtLoader {
       this.isolateCleanTreeCanopy(fullMiniTree);
       const miniPine = this.makeCanvas(S, S);
       const mpCtx = miniPine.getContext('2d')!;
-      this.fillBox(mpCtx, 6, S - 4, S - 12, 3, 'rgba(14, 18, 12, 0.24)');
-      mpCtx.drawImage(fullMiniTree, 0, 0, fullMiniTree.width, fullMiniTree.height, 2, 1, S - 4, S - 2);
+      mpCtx.drawImage(
+        fullMiniTree,
+        0,
+        0,
+        fullMiniTree.width,
+        fullMiniTree.height,
+        Math.round(2 * kScale),
+        Math.round(1 * kScale),
+        S - Math.round(4 * kScale),
+        S - Math.round(2 * kScale)
+      );
       putTileCanvas(TileIndex.PINE_TRUNK, miniPine);
       putTileCanvas(TileIndex.WILLOW_TRUNK, miniPine);
       const miniCrown = this.makeCanvas(S, S);
@@ -2108,17 +2250,17 @@ export class OriginalArtLoader {
           0,
           fullMiniTree.width,
           Math.floor(fullMiniTree.height * 0.72),
-          2,
-          2,
-          S - 4,
-          S - 4
+          Math.round(2 * kScale),
+          Math.round(2 * kScale),
+          S - Math.round(4 * kScale),
+          S - Math.round(4 * kScale)
         );
       putTileCanvas(TileIndex.PINE_CANOPY, miniCrown);
       putTileCanvas(TileIndex.WILLOW_CANOPY, miniCrown);
     }
     {
-      const treeShadow = this.makeCanvas(S, S);
-      const tsCtx = treeShadow.getContext('2d')!;
+      const treeShadow24 = this.makeCanvas(24, 24);
+      const tsCtx = treeShadow24.getContext('2d')!;
       for (let y = 10; y <= 20; y++) {
         for (let x = 3; x <= 20; x++) {
           const dx = (x - 11.5) / 8.5;
@@ -2128,35 +2270,36 @@ export class OriginalArtLoader {
           else if (d2 <= 1.0) this.fillBox(tsCtx, x, y, 1, 1, 'rgba(14, 20, 12, 0.13)');
         }
       }
-      putTileCanvas(ExtraTileIndex.TREE_BASE_SHADOW, treeShadow);
+      putTileCanvas(ExtraTileIndex.TREE_BASE_SHADOW, treeShadow24);
       putTileCanvas(ExtraTileIndex.INVISIBLE_ROOF_MARKER, this.makeCanvas(S, S));
     }
+
     putTileCanvas(TileIndex.BRONZE_INCENSE, this.buildBronzeIncenseTile(S));
-    putTileCanvas(TileIndex.LANTERN_POST, this.buildCrispStoneLantern(true, S, S));
+    putTileCanvas(TileIndex.LANTERN_POST, this.buildCrispStoneLantern(true, 24, 24));
     putGridTile(TileIndex.TREASURY_CHEST, campImg, 8, 8, 4, 4, 1, 1, 2, true);
     putGridTile(TileIndex.MINIGAME_TABLE, campImg, 8, 8, 7, 2, 1, 1, 2, true);
     putGridTile(TileIndex.EMPEROR_THRONE_DESK, palaceImg, 8, 10, 3, 7, 1, 1, 3, false);
     putGridTile(TileIndex.EMPEROR_SCREEN, palaceImg, 8, 10, 6, 6, 1, 1, 3, false);
     {
-      const target = this.makeCanvas(S, S);
-      const tCtx = target.getContext('2d')!;
+      const target24 = this.makeCanvas(24, 24);
+      const tCtx = target24.getContext('2d')!;
       if (campImg) {
         const rack = this.extractGridSubCanvas(campImg, 8, 8, 5, 3, 1, 1, 2, true);
-        tCtx.drawImage(rack, 0, 0, S, S);
+        tCtx.drawImage(rack, 0, 0, 24, 24);
       }
       this.fillBox(tCtx, 4, 3, 16, 15, '#4a2e16');
       this.fillBox(tCtx, 5, 4, 14, 13, '#f5efe2');
       this.fillBox(tCtx, 7, 6, 10, 9, '#c92a1f');
       this.fillBox(tCtx, 9, 8, 6, 5, '#f5efe2');
       this.fillBox(tCtx, 11, 9, 2, 3, '#f0be38');
-      putTileCanvas(TileIndex.ARCHERY_TARGET, target);
+      putTileCanvas(TileIndex.ARCHERY_TARGET, target24);
     }
     putGridTile(TileIndex.ARMY_TENT_LEFT, campImg, 8, 8, 0, 0, 1, 2, 1.5, true);
     putGridTile(TileIndex.ARMY_TENT_RIGHT, campImg, 8, 8, 1, 0, 1, 2, 1.5, true);
     putGridTile(TileIndex.WEAPON_RACK, campImg, 8, 8, 5, 3, 1, 1, 2, true);
     {
-      const banner = this.makeCanvas(S, S);
-      const bCtx = banner.getContext('2d')!;
+      const banner24 = this.makeCanvas(24, 24);
+      const bCtx = banner24.getContext('2d')!;
       if (palaceImg) {
         const base = this.extractGridSubCanvas(palaceImg, 8, 10, 5, 9, 1, 1, 1.5, true);
         bCtx.drawImage(base, 0, 4, 12, 20);
@@ -2165,32 +2308,32 @@ export class OriginalArtLoader {
       this.fillBox(bCtx, 7, 3, 14, 10, '#c9291e');
       this.fillBox(bCtx, 8, 4, 11, 8, '#f2be38');
       this.fillBox(bCtx, 10, 6, 6, 4, '#9c1f16');
-      putTileCanvas(TileIndex.FLEET_BANNER, banner);
+      putTileCanvas(TileIndex.FLEET_BANNER, banner24);
     }
     {
-      const archL = this.makeCanvas(S, S);
-      const archR = this.makeCanvas(S, S);
-      const pCol = this.buildImperialVermilionPillar(true, S, 48);
-      archL.getContext('2d')!.drawImage(pCol, 0, 0, S, 48, 0, 0, S, S);
-      archR.getContext('2d')!.drawImage(pCol, 0, 0, S, 48, 0, 0, S, S);
-      putTileCanvas(TileIndex.TOUR_ARCHWAY_L, archL);
-      putTileCanvas(TileIndex.TOUR_ARCHWAY_R, archR);
+      const arch24 = this.makeCanvas(24, 24);
+      const pCol = this.buildImperialVermilionPillar(true, 24, 48);
+      arch24.getContext('2d')!.drawImage(pCol, 0, 0, 24, 48, 0, 0, 24, 24);
+      putTileCanvas(TileIndex.TOUR_ARCHWAY_L, arch24);
+      putTileCanvas(TileIndex.TOUR_ARCHWAY_R, arch24);
     }
     if (jiangnanImg) {
       const rock = this.extractGridSubCanvas(jiangnanImg, 8, 12, 3, 11, 1, 1, 2.5, true);
       this.stripBorderWaterBackground(rock);
       putTileCanvas(TileIndex.TAIHU_ROCK, rock);
     }
+
     rawTex.refresh();
     const spriteSheetTex = scene.textures.addSpriteSheet(
-      'palace_tiles',
+      targetKey,
       rawTex.getSourceImage() as HTMLImageElement,
       { frameWidth: S, frameHeight: S }
     );
     spriteSheetTex?.setFilter(Phaser.Textures.FilterMode.NEAREST);
   }
+
   /**
-   * 建構立體建築、高對比朱紅殿柱、圓拱月門、自然鄉村小屋與軟邊過渡圖集 ('hd_art_props')
+   * 建構立體建築、上傳素材之五大樹種（翠柳、古柏、粉紅花樹、金秋黃葉樹）、軍營原木柴火與船隻物件圖集
    */
   private static buildPropsAtlas(
     scene: Phaser.Scene,
@@ -2206,6 +2349,7 @@ export class OriginalArtLoader {
       canvas: HTMLCanvasElement;
     }
     const pieces: PackedPiece[] = [];
+
     const pushPiece = (
       names: PropStampFrame[],
       img: HTMLImageElement | HTMLCanvasElement | null,
@@ -2228,7 +2372,7 @@ export class OriginalArtLoader {
       }
       pieces.push({ names, canvas: dest });
     };
-    // 1) 宮廷主屋頂、翼樓、高對比立體朱紅廊柱、石燈與軟化輪廓組件
+
     pushPiece(['palace_grand_roof'], palaceImg, 0.008, 0.106, 0.736, 0.188, 216, 72, 'checker');
     pushPiece(['palace_side_roof'], palaceImg, 0.754, 0.106, 0.24, 0.188, 72, 72, 'checker');
     pushPiece(['palace_wing_left'], palaceImg, 0.008, 0.306, 0.484, 0.164, 144, 62, 'checker');
@@ -2246,20 +2390,19 @@ export class OriginalArtLoader {
     pieces.push({ names: ['palace_door_jamb_r'], canvas: this.buildPalaceDoorJamb(true) });
     pieces.push({ names: ['palace_corner_pilaster'], canvas: this.buildPalaceCornerPilaster() });
     pieces.push({ names: ['moon_gate_arch'], canvas: this.buildMoonGateArch(108, 46) });
-    // 2) 乾淨去背分簇樹冠、太湖石與自然江南鄉村小屋
+
     if (jiangnanImg) {
       const rawTree1 = this.extractNormalizedSubCanvas(jiangnanImg, 0.508, 0.668, 0.236, 0.168, true);
       this.isolateCleanTreeCanopy(rawTree1);
       const rawTree2 = this.extractNormalizedSubCanvas(jiangnanImg, 0.754, 0.668, 0.24, 0.168, true);
       this.isolateCleanTreeCanopy(rawTree2);
-      const buildTreeFrame = (
+
+      const buildStyledTreeFrame = (
         srcTree: HTMLCanvasElement,
         w: number,
         h: number,
         flip: boolean,
-        mulR: number,
-        mulG: number,
-        mulB: number
+        style: 'emerald' | 'pine' | 'blossom' | 'autumn'
       ) => {
         const c = this.makeCanvas(w, h);
         const tCtx = c.getContext('2d', { willReadFrequently: true })!;
@@ -2271,22 +2414,53 @@ export class OriginalArtLoader {
         }
         tCtx.drawImage(srcTree, 0, 0, srcTree.width, srcTree.height, 2, 2, w - 4, h - 4);
         tCtx.restore();
+
         const imgD = tCtx.getImageData(0, 0, w, h);
         const d = imgD.data;
-        for (let i = 0; i < d.length; i += 4) {
-          if (d[i + 3] < 20) continue;
-          d[i] = Math.min(255, Math.round(d[i] * mulR));
-          d[i + 1] = Math.min(255, Math.round(d[i + 1] * mulG));
-          d[i + 2] = Math.min(255, Math.round(d[i + 2] * mulB));
+        for (let y = 0; y < h; y++) {
+          for (let x = 0; x < w; x++) {
+            const p = (y * w + x) * 4;
+            if (d[p + 3] < 20) continue;
+            const r = d[p];
+            const g = d[p + 1];
+            const b = d[p + 2];
+            const isFoliage = g > r + 6 && y < h * 0.78;
+            if (!isFoliage) continue;
+
+            if (style === 'pine') {
+              d[p] = Math.round(r * 0.84);
+              d[p + 1] = Math.round(g * 0.94);
+              d[p + 2] = Math.min(255, Math.round(b * 1.08));
+            } else if (style === 'autumn') {
+              const lum = r * 0.3 + g * 0.59 + b * 0.11;
+              d[p] = Math.min(255, Math.round(lum * 1.48 + 18));
+              d[p + 1] = Math.min(255, Math.round(lum * 1.08 + 6));
+              d[p + 2] = Math.max(18, Math.round(lum * 0.42));
+            } else if (style === 'blossom') {
+              const n = this.pixelNoise(Math.floor(x / 2), Math.floor(y / 2), 73);
+              if (g > 95 && n % 10 < 6) {
+                const bright = g > 135;
+                d[p] = bright ? 255 : 236;
+                d[p + 1] = bright ? 186 : 128;
+                d[p + 2] = bright ? 206 : 162;
+              }
+            }
+          }
         }
         tCtx.putImageData(imgD, 0, 0);
         return c;
       };
-      pieces.push({ names: ['tree_cluster_a'], canvas: buildTreeFrame(rawTree2, 68, 76, false, 1.03, 0.99, 0.93) });
-      pieces.push({ names: ['tree_cluster_b'], canvas: buildTreeFrame(rawTree2, 68, 76, true, 0.95, 1.02, 0.98) });
-      pieces.push({ names: ['tree_cluster_c'], canvas: buildTreeFrame(rawTree1, 66, 74, false, 0.94, 0.99, 0.95) });
-      pieces.push({ names: ['tree_cluster_d'], canvas: buildTreeFrame(rawTree1, 66, 74, true, 1.02, 1.0, 0.94) });
+
+      pieces.push({ names: ['tree_cluster_a'], canvas: buildStyledTreeFrame(rawTree2, 70, 78, false, 'pine') });
+      pieces.push({ names: ['tree_cluster_b'], canvas: buildStyledTreeFrame(rawTree2, 70, 78, true, 'emerald') });
+      pieces.push({ names: ['tree_cluster_c'], canvas: buildStyledTreeFrame(rawTree1, 68, 76, false, 'emerald') });
+      pieces.push({ names: ['tree_cluster_d'], canvas: buildStyledTreeFrame(rawTree1, 68, 76, true, 'pine') });
+      pieces.push({ names: ['tree_blossom_a'], canvas: buildStyledTreeFrame(rawTree2, 70, 78, false, 'blossom') });
+      pieces.push({ names: ['tree_blossom_b'], canvas: buildStyledTreeFrame(rawTree1, 68, 76, true, 'blossom') });
+      pieces.push({ names: ['tree_autumn_a'], canvas: buildStyledTreeFrame(rawTree2, 68, 76, false, 'autumn') });
+      pieces.push({ names: ['tree_autumn_b'], canvas: buildStyledTreeFrame(rawTree1, 66, 74, true, 'autumn') });
     }
+
     pushPiece(['jiangnan_rocks_a', 'shore_rocks_a'], jiangnanImg, 0.38, 0.908, 0.116, 0.086, 36, 28, 'water_prop');
     pushPiece(['jiangnan_rocks_b', 'shore_rocks_b'], jiangnanImg, 0.756, 0.844, 0.236, 0.082, 56, 28, 'water_prop');
     pieces.push({
@@ -2297,7 +2471,7 @@ export class OriginalArtLoader {
       names: ['jiangnan_house_b'],
       canvas: this.buildCleanJiangnanCottage(jiangnanImg, 'scholar', 128, 74)
     });
-    // 3) 路沿過渡、牆腳青苔、草穗邊、田埂、水草、灌木、竹籬與踏步石
+
     pieces.push({ names: ['marble_edge_w'], canvas: this.buildMarbleEdgeOverlay('w') });
     pieces.push({ names: ['marble_edge_e'], canvas: this.buildMarbleEdgeOverlay('e') });
     pieces.push({ names: ['marble_edge_n'], canvas: this.buildMarbleEdgeOverlay('n') });
@@ -2316,17 +2490,19 @@ export class OriginalArtLoader {
     pieces.push({ names: ['jiangnan_shrub_b'], canvas: this.buildJiangnanShrub(false) });
     pieces.push({ names: ['rustic_bamboo_fence'], canvas: this.buildRusticBambooFence() });
     pieces.push({ names: ['cottage_stepping_stones'], canvas: this.buildCottageSteppingStones() });
-    // 4) 軍營與船隻物件
-    pushPiece(['camp_tent_large'], campImg, 0.006, 0.006, 0.238, 0.238, 72, 72, 'checker');
-    pushPiece(['camp_tent_open', 'camp_tent_medium'], campImg, 0.504, 0.128, 0.242, 0.24, 72, 72, 'checker');
+    pieces.push({ names: ['camp_logs'], canvas: this.buildCampTimberLogs() });
+    pieces.push({ names: ['camp_firewood'], canvas: this.buildCampFirewood() });
+
+    pushPiece(['camp_tent_large'], campImg, 0.006, 0.006, 0.238, 0.238, 76, 76, 'checker');
+    pushPiece(['camp_tent_open', 'camp_tent_medium'], campImg, 0.504, 0.128, 0.242, 0.24, 74, 74, 'checker');
     pushPiece(['camp_palisade', 'camp_fence_h'], campImg, 0.13, 0.38, 0.365, 0.114, 96, 34, 'checker');
     pushPiece(['camp_fence_short'], campImg, 0.006, 0.504, 0.238, 0.114, 56, 32, 'checker');
-    pushPiece(['camp_cannon'], campImg, 0.754, 0.38, 0.118, 0.114, 38, 34, 'checker');
-    pushPiece(['camp_rack'], campImg, 0.628, 0.38, 0.118, 0.114, 34, 34, 'checker');
-    pushPiece(['camp_crate', 'camp_crates'], campImg, 0.504, 0.504, 0.118, 0.114, 30, 30, 'checker');
-    pushPiece(['pier_boat_h'], campImg, 0.506, 0.86, 0.24, 0.128, 76, 36, 'water_prop');
-    pushPiece(['pier_boat_v'], campImg, 0.256, 0.756, 0.114, 0.234, 36, 72, 'water_prop');
-    // 5) 動態排版寫入單一 'hd_art_props' 圖集
+    pushPiece(['camp_cannon'], campImg, 0.754, 0.38, 0.118, 0.114, 40, 36, 'checker');
+    pushPiece(['camp_rack'], campImg, 0.628, 0.38, 0.118, 0.114, 36, 36, 'checker');
+    pushPiece(['camp_crate', 'camp_crates'], campImg, 0.504, 0.504, 0.118, 0.114, 32, 32, 'checker');
+    pushPiece(['pier_boat_h'], campImg, 0.506, 0.86, 0.24, 0.128, 78, 38, 'water_prop');
+    pushPiece(['pier_boat_v'], campImg, 0.256, 0.756, 0.114, 0.234, 38, 74, 'water_prop');
+
     const atlasW = 512;
     let curX = 2;
     let curY = 2;
@@ -2337,6 +2513,7 @@ export class OriginalArtLoader {
       y: number;
       canvas: HTMLCanvasElement;
     }[] = [];
+
     for (const p of pieces) {
       if (curX + p.canvas.width + 2 > atlasW) {
         curX = 2;
@@ -2347,6 +2524,7 @@ export class OriginalArtLoader {
       curX += p.canvas.width + 4;
       rowMaxH = Math.max(rowMaxH, p.canvas.height);
     }
+
     const atlasH = Math.max(64, curY + rowMaxH + 4);
     const atlasTex = scene.textures.createCanvas(HD_PROPS_ATLAS_KEY, atlasW, atlasH);
     if (!atlasTex) return;
@@ -2361,10 +2539,14 @@ export class OriginalArtLoader {
     atlasTex.refresh();
     atlasTex.setFilter(Phaser.Textures.FilterMode.NEAREST);
   }
+
   private static buildAllCharacterSheets(
     scene: Phaser.Scene,
     charImg: HTMLImageElement | HTMLCanvasElement | null
   ): void {
+    // 先註冊上傳之全解析度主角小學生 4 向動畫精靈圖
+    const studentReady = this.registerReadySchoolboySheet(scene);
+
     if (!charImg) return;
     const rowLabelCutoffRatio: Record<CharacterRowKind, number> = {
       0: 0.104,
@@ -2378,7 +2560,7 @@ export class OriginalArtLoader {
       rowFramesCache.set(r, this.sliceCharacterRowFrames(charImg, r, rowLabelCutoffRatio[r]));
     }
     for (const spec of CHARACTER_SPECS) {
-      if (spec.key === 'char_student' && this.registerReadySchoolboySheet(scene)) {
+      if (spec.key === 'char_student' && studentReady) {
         continue;
       }
       const extracted = rowFramesCache.get(spec.row);
@@ -2387,6 +2569,7 @@ export class OriginalArtLoader {
       }
     }
   }
+
   private static sliceCharacterRowFrames(
     charImg: HTMLImageElement | HTMLCanvasElement,
     rowIdx: CharacterRowKind,
@@ -2401,6 +2584,7 @@ export class OriginalArtLoader {
     const sCtx = strip.getContext('2d', { willReadFrequently: true })!;
     sCtx.drawImage(charImg, startX, startY, stripW, stripH, 0, 0, stripW, stripH);
     this.removeCheckerboardAndGrid(strip);
+
     const sData = sCtx.getImageData(0, 0, stripW, stripH).data;
     const colOpaque = new Int32Array(stripW);
     for (let x = 0; x < stripW; x++) {
@@ -2410,6 +2594,7 @@ export class OriginalArtLoader {
       }
       colOpaque[x] = cnt;
     }
+
     const rawSegments: { x0: number; x1: number }[] = [];
     let inSeg = false;
     let segStart = 0;
@@ -2425,6 +2610,7 @@ export class OriginalArtLoader {
       }
     }
     if (inSeg) rawSegments.push({ x0: segStart, x1: stripW - 1 });
+
     const merged: { x0: number; x1: number }[] = [];
     for (const seg of rawSegments) {
       if (merged.length > 0 && seg.x0 - merged[merged.length - 1].x1 <= 4) {
@@ -2433,6 +2619,7 @@ export class OriginalArtLoader {
         merged.push({ ...seg });
       }
     }
+
     const validIslands = merged.filter((seg) => seg.x1 - seg.x0 >= 24);
     const boxes: CropBox[] = [];
     if (validIslands.length === 11) {
@@ -2447,6 +2634,7 @@ export class OriginalArtLoader {
         boxes.push(this.measureTightAlphaBounds(sData, stripW, stripH, x0, x1));
       }
     }
+
     return boxes.map((b) => {
       const f = this.makeCanvas(b.w, b.h);
       f.getContext('2d', { willReadFrequently: true })!.drawImage(
@@ -2464,6 +2652,7 @@ export class OriginalArtLoader {
       return f;
     });
   }
+
   private static measureTightAlphaBounds(
     data: Uint8ClampedArray,
     w: number,
@@ -2495,6 +2684,7 @@ export class OriginalArtLoader {
       h: Math.max(1, maxY - minY + 1)
     };
   }
+
   private static applySelectiveRobeRemap(
     src: HTMLCanvasElement,
     rule?: RobeRemapRule
@@ -2516,7 +2706,7 @@ export class OriginalArtLoader {
         const b = d[p + 2];
         const lum = (r * 299 + g * 587 + b * 114) / 1000;
         if (lum < 42 || lum > 238) continue;
-        const isBlueOfficial = b > r + 16 && b > g + 6;
+        const isBlueOfficial = b > r + 14 && b > g + 4;
         const isYellowImperial =
           r > 155 && g > 110 && b < 95 && Math.max(r, g, b) - Math.min(r, g, b) > 55;
         if (isBlueOfficial || isYellowImperial) {
@@ -2530,6 +2720,15 @@ export class OriginalArtLoader {
     ctx.putImageData(imgData, 0, 0);
     return out;
   }
+
+  /**
+   * 依據上傳之 4x4 小學生像素圖（256x336，每格 64x84），
+   * 重組精準四方向動畫：
+   * - down（正面）：(0,0), (0,1), (0,2), (0,3)
+   * - left（側面朝左）：(1,0), (1,2), (1,3), (2,0)
+   * - right（側面朝右）：(2,2), (2,3), (3,3), (2,2)
+   * - up（背面朝上）：由正面步伐合成後腦黑髮與白校服背領，避免向上走時臉朝鏡頭
+   */
   private static registerReadySchoolboySheet(scene: Phaser.Scene): boolean {
     if (!scene.textures.exists(RAW_PNG_KEYS.SCHOOLBOY)) return false;
     const srcTex = scene.textures.get(RAW_PNG_KEYS.SCHOOLBOY);
@@ -2538,14 +2737,135 @@ export class OriginalArtLoader {
     if (!(img instanceof HTMLImageElement) && !(img instanceof HTMLCanvasElement)) {
       return false;
     }
+
+    const srcCellW = Math.max(16, Math.floor(img.width / 4));
+    const srcCellH = Math.max(20, Math.floor(img.height / 4));
+    const dstFW = CHAR_FRAME_W * CHAR_HD_SCALE; // 128
+    const dstFH = CHAR_FRAME_H * CHAR_HD_SCALE; // 168
+
+    const extractCell = (col: number, row: number): HTMLCanvasElement => {
+      const c = this.makeCanvas(srcCellW, srcCellH);
+      const cCtx = c.getContext('2d', { willReadFrequently: true })!;
+      cCtx.imageSmoothingEnabled = false;
+      cCtx.drawImage(
+        img,
+        col * srcCellW,
+        row * srcCellH,
+        srcCellW,
+        srcCellH,
+        0,
+        0,
+        srcCellW,
+        srcCellH
+      );
+      return c;
+    };
+
+    const makeBackViewFromFront = (frontCell: HTMLCanvasElement): HTMLCanvasElement => {
+      const back = this.makeCanvas(srcCellW, srcCellH);
+      const bCtx = back.getContext('2d', { willReadFrequently: true })!;
+      bCtx.drawImage(frontCell, 0, 0);
+      const imgD = bCtx.getImageData(0, 0, srcCellW, srcCellH);
+      const d = imgD.data;
+      const headEndY = Math.floor(srcCellH * 0.44);
+      const shirtEndY = Math.floor(srcCellH * 0.68);
+      const midX = srcCellW / 2;
+
+      for (let y = 2; y < headEndY; y++) {
+        for (let x = 2; x < srcCellW - 2; x++) {
+          const p = (y * srcCellW + x) * 4;
+          if (d[p + 3] < 80) continue;
+          const r = d[p];
+          const g = d[p + 1];
+          const b = d[p + 2];
+          const isSkinOrEye =
+            (r - b > 26 && r > 135) || (y > srcCellH * 0.22 && Math.abs(x - midX) < srcCellW * 0.22);
+          if (isSkinOrEye) {
+            // 後腦自然層次深褐黑短髮與衣領交界
+            if (y >= headEndY - 3 && Math.abs(x - midX) < srcCellW * 0.13) {
+              d[p] = 224;
+              d[p + 1] = 176;
+              d[p + 2] = 142;
+            } else {
+              const highlight = y < srcCellH * 0.2 && Math.abs(x - midX) < srcCellW * 0.14;
+              d[p] = highlight ? 48 : 28;
+              d[p + 1] = highlight ? 52 : 31;
+              d[p + 2] = highlight ? 66 : 40;
+            }
+          }
+        }
+      }
+
+      // 將正面校章與領口改為乾淨白色校服背部與後領線
+      for (let y = headEndY; y < shirtEndY; y++) {
+        for (let x = Math.floor(midX - srcCellW * 0.18); x <= Math.ceil(midX + srcCellW * 0.18); x++) {
+          const p = (y * srcCellW + x) * 4;
+          if (d[p + 3] < 80) continue;
+          const r = d[p];
+          const g = d[p + 1];
+          const b = d[p + 2];
+          const lum = (r + g + b) / 3;
+          if (lum > 70) {
+            const isCollarLine = y <= headEndY + 2;
+            d[p] = isCollarLine ? 214 : 242;
+            d[p + 1] = isCollarLine ? 220 : 244;
+            d[p + 2] = isCollarLine ? 228 : 248;
+          }
+        }
+      }
+
+      bCtx.putImageData(imgD, 0, 0);
+      return back;
+    };
+
+    const downCells = [extractCell(0, 0), extractCell(1, 0), extractCell(2, 0), extractCell(3, 0)];
+    const leftCells = [extractCell(0, 1), extractCell(2, 1), extractCell(3, 1), extractCell(0, 2)];
+    const rightCells = [extractCell(2, 2), extractCell(3, 2), extractCell(3, 3), extractCell(2, 2)];
+    const upCells = downCells.map((fc) => makeBackViewFromFront(fc));
+    const allRows = [downCells, leftCells, rightCells, upCells];
+
     const key = 'char_student';
+    const rawKey = 'char_student_hd_sheet';
     if (scene.textures.exists(key)) scene.textures.remove(key);
-    const charSpriteTex = scene.textures.addSpriteSheet(key, img as HTMLImageElement, {
-      frameWidth: CHAR_FRAME_W,
-      frameHeight: CHAR_FRAME_H
-    });
+    if (scene.textures.exists(rawKey)) scene.textures.remove(rawKey);
+
+    const outTex = scene.textures.createCanvas(rawKey, dstFW * 4, dstFH * 4);
+    if (!outTex) return false;
+    const ctx = outTex.getContext();
+    ctx.imageSmoothingEnabled = false;
+
+    for (let r = 0; r < 4; r++) {
+      for (let c = 0; c < 4; c++) {
+        const cell = allRows[r][c];
+        const ox = c * dstFW;
+        const oy = r * dstFH;
+        const dyBob = c % 2 === 1 ? -3 : 0;
+        ctx.drawImage(
+          cell,
+          0,
+          0,
+          srcCellW,
+          srcCellH,
+          ox,
+          oy + dyBob,
+          dstFW,
+          dstFH
+        );
+      }
+    }
+    outTex.refresh();
+
+    const charSpriteTex = scene.textures.addSpriteSheet(
+      key,
+      outTex.getSourceImage() as HTMLImageElement,
+      {
+        frameWidth: dstFW,
+        frameHeight: dstFH
+      }
+    );
     if (!charSpriteTex) return false;
     charSpriteTex.setFilter(Phaser.Textures.FilterMode.NEAREST);
+
     (['down', 'left', 'right', 'up'] as const).forEach((dName, rowIdx) => {
       const animKey = `${key}_${dName}`;
       if (scene.anims.exists(animKey)) scene.anims.remove(animKey);
@@ -2563,68 +2883,76 @@ export class OriginalArtLoader {
     });
     return true;
   }
-  private static registerCharacterSpritesheetAndAnims(
 
+  /**
+   * 直接以原生全解析度 (128x168) 繪製所有清朝歷史角色精靈圖，
+   * 不再壓縮成 32x42 導致五官、朝珠、頂戴與衣紋糊化！
+   */
+  private static registerCharacterSpritesheetAndAnims(
     scene: Phaser.Scene,
     spec: CharacterSheetSpec,
     frames11: HTMLCanvasElement[]
   ): void {
-    const fw = CHAR_FRAME_W;
-    const fh = CHAR_FRAME_H;
+    const fw = CHAR_FRAME_W * CHAR_HD_SCALE; // 128
+    const fh = CHAR_FRAME_H * CHAR_HD_SCALE; // 168
     const cols = 4;
     const rows = 4;
+
     if (scene.textures.exists(spec.key)) scene.textures.remove(spec.key);
     const rawKey = `${spec.key}_hd_raw`;
     if (scene.textures.exists(rawKey)) scene.textures.remove(rawKey);
+
     const pick = (idx: number) =>
       this.applySelectiveRobeRemap(
         frames11[Math.min(frames11.length - 1, Math.max(0, idx))],
         spec.robeRemap
       );
+
     let downFrames: { img: HTMLCanvasElement; flipX: boolean; dy: number }[];
     if (spec.row === 1) {
       const fStand = spec.useBeardedOfficial ? pick(0) : pick(1);
       const fStepA = spec.useBeardedOfficial ? pick(3) : pick(4);
       const fStepB = spec.useBeardedOfficial ? pick(6) : pick(7);
       downFrames = [
-        { img: fStepA, flipX: false, dy: -1 },
+        { img: fStepA, flipX: false, dy: -3 },
         { img: fStand, flipX: false, dy: 0 },
-        { img: fStepB, flipX: true, dy: -1 },
+        { img: fStepB, flipX: true, dy: -3 },
         { img: fStand, flipX: false, dy: 0 }
       ];
     } else if (spec.row === 2) {
       downFrames = [
-        { img: pick(3), flipX: false, dy: -1 },
+        { img: pick(3), flipX: false, dy: -3 },
         { img: pick(0), flipX: false, dy: 0 },
-        { img: pick(4), flipX: false, dy: -1 },
+        { img: pick(4), flipX: false, dy: -3 },
         { img: pick(5), flipX: false, dy: 0 }
       ];
     } else if (spec.row === 3) {
       downFrames = [
-        { img: pick(4), flipX: false, dy: -1 },
+        { img: pick(4), flipX: false, dy: -3 },
         { img: pick(0), flipX: false, dy: 0 },
-        { img: pick(7), flipX: true, dy: -1 },
+        { img: pick(7), flipX: true, dy: -3 },
         { img: pick(5), flipX: false, dy: 0 }
       ];
     } else if (spec.row === 4) {
       downFrames = [
-        { img: pick(1), flipX: false, dy: -1 },
+        { img: pick(1), flipX: false, dy: -3 },
         { img: pick(0), flipX: false, dy: 0 },
-        { img: pick(5), flipX: false, dy: -1 },
+        { img: pick(5), flipX: false, dy: -3 },
         { img: pick(4), flipX: false, dy: 0 }
       ];
     } else {
       downFrames = [
-        { img: pick(1), flipX: false, dy: -1 },
+        { img: pick(1), flipX: false, dy: -3 },
         { img: pick(0), flipX: false, dy: 0 },
-        { img: pick(4), flipX: true, dy: -1 },
+        { img: pick(4), flipX: true, dy: -3 },
         { img: pick(3), flipX: false, dy: 0 }
       ];
     }
+
     const nativeSide = [
-      { img: pick(8), dy: -1 },
+      { img: pick(8), dy: -3 },
       { img: pick(2), dy: 0 },
-      { img: pick(9), dy: -1 },
+      { img: pick(9), dy: -3 },
       { img: pick(2), dy: 0 }
     ];
     const leftFrames = nativeSide.map((s) => ({ img: s.img, flipX: spec.sideFacesRight, dy: s.dy }));
@@ -2632,32 +2960,34 @@ export class OriginalArtLoader {
     const backBase = pick(10);
     const backStep = spec.row === 0 ? pick(9) : backBase;
     const upFrames = [
-      { img: backStep, flipX: false, dy: -1 },
+      { img: backStep, flipX: false, dy: -3 },
       { img: backBase, flipX: false, dy: 0 },
-      { img: backBase, flipX: true, dy: -1 },
+      { img: backBase, flipX: true, dy: -3 },
       { img: backBase, flipX: false, dy: 0 }
     ];
+
     const allRows = [downFrames, leftFrames, rightFrames, upFrames];
-    const baseScale = (fh - 5) / Math.max(16, downFrames[1].img.height);
+    const baseScale = (fh - 14) / Math.max(16, downFrames[1].img.height);
+
     const sheetTex = scene.textures.createCanvas(rawKey, fw * cols, fh * rows);
     if (!sheetTex) return;
     const ctx = sheetTex.getContext();
     ctx.imageSmoothingEnabled = false;
+
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const cellX = c * fw;
         const cellY = r * fh;
         const entry = allRows[r][c];
-        this.fillBox(ctx, cellX + 8, cellY + fh - 4, fw - 16, 3, 'rgba(12, 8, 6, 0.32)');
-        this.fillBox(ctx, cellX + 6, cellY + fh - 3, fw - 12, 2, 'rgba(12, 8, 6, 0.20)');
-        let dw = Math.max(10, Math.round(entry.img.width * baseScale));
-        let dh = Math.max(16, Math.round(entry.img.height * baseScale));
-        if (dw > fw - 2) {
-          dh = Math.max(14, Math.round((dh * (fw - 2)) / dw));
-          dw = fw - 2;
+        this.fillBox(ctx, cellX + 28, cellY + fh - 12, fw - 56, 8, 'rgba(12, 8, 6, 0.28)');
+        let dw = Math.max(24, Math.round(entry.img.width * baseScale));
+        let dh = Math.max(40, Math.round(entry.img.height * baseScale));
+        if (dw > fw - 8) {
+          dh = Math.max(36, Math.round((dh * (fw - 8)) / dw));
+          dw = fw - 8;
         }
         const drawX = cellX + Math.floor((fw - dw) / 2);
-        const drawY = cellY + (fh - 2) - dh + entry.dy;
+        const drawY = cellY + (fh - 6) - dh + entry.dy;
         ctx.save();
         ctx.imageSmoothingEnabled = false;
         if (entry.flipX) {
@@ -2670,6 +3000,7 @@ export class OriginalArtLoader {
         ctx.restore();
       }
     }
+
     sheetTex.refresh();
     const charSpriteTex = scene.textures.addSpriteSheet(
       spec.key,
@@ -2677,6 +3008,7 @@ export class OriginalArtLoader {
       { frameWidth: fw, frameHeight: fh }
     );
     charSpriteTex?.setFilter(Phaser.Textures.FilterMode.NEAREST);
+
     (['down', 'left', 'right', 'up'] as const).forEach((dName, rowIdx) => {
       const animKey = `${spec.key}_${dName}`;
       if (scene.anims.exists(animKey)) scene.anims.remove(animKey);
@@ -2693,6 +3025,7 @@ export class OriginalArtLoader {
       });
     });
   }
+
   private static buildRoyalBoatTexture(
     scene: Phaser.Scene,
     palaceImg: HTMLImageElement | HTMLCanvasElement | null,
@@ -2724,6 +3057,7 @@ export class OriginalArtLoader {
     raw.refresh();
     raw.setFilter(Phaser.Textures.FilterMode.NEAREST);
   }
+
   private static buildHudWorldMarkers(scene: Phaser.Scene): void {
     if (scene.textures.exists('guide_arrow')) scene.textures.remove('guide_arrow');
     const arrowTex = scene.textures.createCanvas('guide_arrow', 24, 24);
@@ -2743,6 +3077,7 @@ export class OriginalArtLoader {
       arrowTex.refresh();
       arrowTex.setFilter(Phaser.Textures.FilterMode.NEAREST);
     }
+
     if (scene.textures.exists('npc_badge')) scene.textures.remove('npc_badge');
     const markTex = scene.textures.createCanvas('npc_badge', 16, 16);
     if (markTex) {
