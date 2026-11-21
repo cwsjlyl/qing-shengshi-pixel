@@ -1,9 +1,10 @@
 import Phaser from 'phaser';
 
-/** 角色精靈圖高解析放大倍率（雙重 EPX 邊緣重建：1x -> 4x） */
+/** 角色精靈圖原生高清邏輯縮放比例（128x168 對應世界 32x42 邏輯尺寸） */
 export const CHAR_HD_SCALE = 4;
 
-const HD_CHAR_CACHE_NAME = 'qing-hd-chars-v1';
+const HD_CHAR_CACHE_NAME = 'qing-hd-chars-v3';
+const LEGACY_CACHE_NAMES = ['qing-hd-chars-v1', 'qing-hd-chars-v2'];
 
 const CRISP_FONT_STACK =
   '"PingFang HK", "Heiti TC", "Apple LiGothic", "Noto Sans TC", "Microsoft JhengHei", sans-serif';
@@ -105,61 +106,6 @@ function blendOpaque(p1: number, p2: number): number {
   return packPixel(r, g, b, 255);
 }
 
-function cleanAndSharpenFrame1x(src: Uint32Array, w: number, h: number): Uint32Array {
-  const cleaned = new Uint32Array(w * h);
-  for (let i = 0; i < src.length; i++) {
-    const p = src[i];
-    const a = (p >>> 24) & 0xff;
-    if (a < 56) {
-      cleaned[i] = 0;
-    } else if (a >= 132) {
-      cleaned[i] = ((255 << 24) | (p & 0x00ffffff)) >>> 0;
-    } else {
-      cleaned[i] = p;
-    }
-  }
-
-  const out = new Uint32Array(cleaned);
-  for (let y = 1; y < h - 1; y++) {
-    for (let x = 1; x < w - 1; x++) {
-      const idx = y * w + x;
-      const c = cleaned[idx];
-      if (((c >>> 24) & 0xff) < 250) continue;
-
-      const n = cleaned[(y - 1) * w + x];
-      const s = cleaned[(y + 1) * w + x];
-      const l = cleaned[y * w + (x - 1)];
-      const r = cleaned[y * w + (x + 1)];
-      if (
-        ((n >>> 24) & 0xff) < 250 ||
-        ((s >>> 24) & 0xff) < 250 ||
-        ((l >>> 24) & 0xff) < 250 ||
-        ((r >>> 24) & 0xff) < 250
-      ) {
-        continue;
-      }
-
-      const cr = (c >>> 16) & 0xff;
-      const cg = (c >>> 8) & 0xff;
-      const cb = c & 0xff;
-
-      const avgR =
-        (((n >>> 16) & 0xff) + ((s >>> 16) & 0xff) + ((l >>> 16) & 0xff) + ((r >>> 16) & 0xff)) *
-        0.25;
-      const avgG =
-        (((n >>> 8) & 0xff) + ((s >>> 8) & 0xff) + ((l >>> 8) & 0xff) + ((r >>> 8) & 0xff)) *
-        0.25;
-      const avgB = ((n & 0xff) + (s & 0xff) + (l & 0xff) + (r & 0xff)) * 0.25;
-
-      const nr = Math.max(0, Math.min(255, Math.round(cr + (cr - avgR) * 0.24)));
-      const ng = Math.max(0, Math.min(255, Math.round(cg + (cg - avgG) * 0.24)));
-      const nb = Math.max(0, Math.min(255, Math.round(cb + (cb - avgB) * 0.24)));
-      out[idx] = packPixel(nr, ng, nb, 255);
-    }
-  }
-  return out;
-}
-
 function epxScale2x(src: Uint32Array, w: number, h: number): Uint32Array {
   const dstW = w * 2;
   const dstH = h * 2;
@@ -199,45 +145,6 @@ function epxScale2x(src: Uint32Array, w: number, h: number): Uint32Array {
     }
   }
   return dst;
-}
-
-function applyAdaptiveSilhouetteOutline(buf: Uint32Array, w: number, h: number): Uint32Array {
-  const out = new Uint32Array(buf);
-  const outlineColor = packPixel(28, 16, 11, 232);
-
-  const dirs = [
-    [0, -1],
-    [1, 0],
-    [0, 1],
-    [-1, 0]
-  ];
-
-  for (let y = 1; y < h - 1; y++) {
-    for (let x = 1; x < w - 1; x++) {
-      const idx = y * w + x;
-      if (((buf[idx] >>> 24) & 0xff) !== 0) continue;
-
-      let touchesBrightEdge = false;
-      for (const [ox, oy] of dirs) {
-        const np = buf[(y + oy) * w + (x + ox)];
-        const na = (np >>> 24) & 0xff;
-        if (na >= 180) {
-          const r = (np >>> 16) & 0xff;
-          const g = (np >>> 8) & 0xff;
-          const b = np & 0xff;
-          if (r + g + b > 130) {
-            touchesBrightEdge = true;
-            break;
-          }
-        }
-      }
-
-      if (touchesBrightEdge) {
-        out[idx] = outlineColor;
-      }
-    }
-  }
-  return out;
 }
 
 function registerHdCharSheetAndAnims(
@@ -323,15 +230,13 @@ function buildSingleCharacterHdCanvas(
         packed1x[i] = packPixel(raw[bi], raw[bi + 1], raw[bi + 2], raw[bi + 3]);
       }
 
-      const sharp1x = cleanAndSharpenFrame1x(packed1x, fw, fh);
-      const up2x = epxScale2x(sharp1x, fw, fh);
+      const up2x = epxScale2x(packed1x, fw, fh);
       const up4x = epxScale2x(up2x, fw * 2, fh * 2);
-      const outlined4x = applyAdaptiveSilhouetteOutline(up4x, fw4, fh4);
 
       const outImgData = dstCtx.createImageData(fw4, fh4);
       const outBytes = outImgData.data;
-      for (let i = 0; i < outlined4x.length; i++) {
-        const p = outlined4x[i];
+      for (let i = 0; i < up4x.length; i++) {
+        const p = up4x[i];
         const bi = i * 4;
         outBytes[bi] = (p >>> 16) & 0xff;
         outBytes[bi + 1] = (p >>> 8) & 0xff;
@@ -344,16 +249,15 @@ function buildSingleCharacterHdCanvas(
   return dstCanvas;
 }
 
-/**
- * 支援 CacheStorage 持久化快取的 4x 高清角色貼圖升級：
- * 首次開啟時執行 EPX 放大並於背景寫入快取；課堂二次重開或重新整理時直接零運算毫秒級讀取。
- */
 export async function enhanceAllCharacterTexturesCached(
   scene: Phaser.Scene
 ): Promise<void> {
   let cache: Cache | null = null;
   if (typeof window !== 'undefined' && 'caches' in window) {
     try {
+      for (const oldName of LEGACY_CACHE_NAMES) {
+        void window.caches.delete(oldName).catch(() => {});
+      }
       cache = await window.caches.open(HD_CHAR_CACHE_NAME);
     } catch {
       cache = null;
@@ -363,11 +267,13 @@ export async function enhanceAllCharacterTexturesCached(
   for (const key of CHARACTER_TEXTURE_KEYS) {
     if (!scene.textures.exists(key)) continue;
     const tex = scene.textures.get(key);
+    tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
     const frame0 = tex.get(0);
     if (!frame0) continue;
 
     const fw = frame0.width;
     const fh = frame0.height;
+    // 若 OriginalArtLoader 已直接建立 128x168 原生高清像素貼圖，保持原生銳利像素不再平滑重繪
     if (fw <= 0 || fh <= 0 || fw >= 120) continue;
 
     const fw4 = fw * CHAR_HD_SCALE;

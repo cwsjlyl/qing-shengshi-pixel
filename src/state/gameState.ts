@@ -2,6 +2,21 @@ import { STAGES, STAGE_ORDER, StageId } from '../data/content';
 
 export type PlayMode = 'sequential' | 'class';
 export type MedalRank = 'gold' | 'silver' | 'bronze';
+export type ViewZoomPreset = 'panoramic' | 'wide' | 'standard' | 'close';
+
+export const ZOOM_PRESET_ORDER: ReadonlyArray<ViewZoomPreset> = [
+  'wide',
+  'panoramic',
+  'standard',
+  'close'
+];
+
+export const ZOOM_PRESET_LABELS: Record<ViewZoomPreset, string> = {
+  panoramic: '全景',
+  wide: '廣角',
+  standard: '適中',
+  close: '近景'
+};
 
 export const MEDAL_LABELS: Record<MedalRank, string> = {
   gold: '御賜金印 ★★★',
@@ -58,6 +73,7 @@ interface SerializedSaveData {
   completedClassStages: StageId[];
   minigameMedals: Partial<Record<string, MedalRank>>;
   studentName: string;
+  zoomPreset?: ViewZoomPreset;
   progressMap: Record<StageId, SerializedStageProgress>;
 }
 
@@ -69,6 +85,7 @@ class GameStateManager {
   public completedClassStages: Set<StageId> = new Set();
   public minigameMedals: Partial<Record<string, MedalRank>> = {};
   public studentName = '';
+  public zoomPreset: ViewZoomPreset = 'wide';
   private hasActiveSession = false;
   private progressMap: Record<StageId, StageProgress>;
 
@@ -117,6 +134,14 @@ class GameStateManager {
       if (typeof parsed.studentName === 'string') {
         this.studentName = parsed.studentName;
       }
+      if (
+        parsed.zoomPreset === 'panoramic' ||
+        parsed.zoomPreset === 'wide' ||
+        parsed.zoomPreset === 'standard' ||
+        parsed.zoomPreset === 'close'
+      ) {
+        this.zoomPreset = parsed.zoomPreset;
+      }
       this.hasActiveSession = Boolean(parsed.hasActiveSession);
 
       if (parsed.progressMap) {
@@ -161,6 +186,7 @@ class GameStateManager {
         completedClassStages: Array.from(this.completedClassStages),
         minigameMedals: this.minigameMedals,
         studentName: this.studentName,
+        zoomPreset: this.zoomPreset,
         progressMap: {
           kangxi: serializeStage(this.progressMap.kangxi),
           yongzheng: serializeStage(this.progressMap.yongzheng),
@@ -172,6 +198,14 @@ class GameStateManager {
     } catch {
       // Ignore storage quota / iframe restrictions
     }
+  }
+
+  public cycleZoomPreset(): ViewZoomPreset {
+    const idx = ZOOM_PRESET_ORDER.indexOf(this.zoomPreset);
+    const next = ZOOM_PRESET_ORDER[(idx + 1) % ZOOM_PRESET_ORDER.length];
+    this.zoomPreset = next;
+    this.persist();
+    return next;
   }
 
   public hasSavedProgress(): boolean {
@@ -378,7 +412,6 @@ class GameStateManager {
       };
     }
 
-    // 乾隆朝：版圖登頂，惟軍費、南巡、和珅與人多田少令國庫與民心明顯下滑
     let treasury = 94;
     let morale = 90;
     let territory = 86;
