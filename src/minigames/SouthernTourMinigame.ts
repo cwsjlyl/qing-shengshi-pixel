@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { toCssSize } from '../gfx/CrispVisuals';
 import { TILE_SIZE, TileIndex } from '../gfx/PixelArtGenerator';
 import { bindRawPointerBridge } from '../input/rawPointerBridge';
 import { gameState } from '../state/gameState';
@@ -72,7 +73,7 @@ export class SouthernTourMinigame extends Phaser.Scene {
     stopOtherScenes(this);
     clearStaleTitleOrOpeningHud(this);
 
-        this.cameras.main.setBackgroundColor('#216878');
+    this.cameras.main.setBackgroundColor('#216878');
     this.input.setTopOnly(false);
     this.fitViewport(this.scale.width, this.scale.height);
 
@@ -84,7 +85,6 @@ export class SouthernTourMinigame extends Phaser.Scene {
       this.scale.off('resize', onResize);
     });
 
-    // 江南運河兩岸青石堤岸、粉牆與垂柳全幅背景
     for (let x = -4; x < 28; x++) {
       const px = x * TILE_SIZE + 12;
       this.add.image(px, 84, 'palace_tiles', TileIndex.GRASS_A);
@@ -106,7 +106,6 @@ export class SouthernTourMinigame extends Phaser.Scene {
       this.bankProps.push(wTop, wBot);
     }
 
-    // 三條水路航道分隔線（僅視覺參考；船隻可在運河內自由移動）
     const laneGraphics = this.add.graphics();
     laneGraphics.lineStyle(1.5, 0x7cd1e3, 0.45);
     for (let x = 12; x < STAGE_W; x += 28) {
@@ -114,7 +113,6 @@ export class SouthernTourMinigame extends Phaser.Scene {
       laneGraphics.lineBetween(x, 255, x + 14, 255);
     }
 
-    // 頂部雙列資訊牌匾與國庫存銀遞減條
     this.add
       .rectangle(STAGE_W / 2, 38, STAGE_W - 12, 68, 0x362018, 0.96)
       .setStrokeStyle(2.5, 0xf0c246)
@@ -122,37 +120,41 @@ export class SouthernTourMinigame extends Phaser.Scene {
 
     this.titleText = this.add
       .text(16, 14, '', {
-        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
         fontSize: '14px',
         color: '#ffe89e',
-        fontStyle: 'bold'
+        fontStyle: 'bold',
+        stroke: '#1e100a',
+        strokeThickness: 2
       })
       .setDepth(31);
 
     this.cityBannerText = this.add
       .text(16, 40, '', {
-        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
         fontSize: '13px',
-        color: '#d5f0e5',
-        fontStyle: 'bold'
+        color: '#dff6ec',
+        fontStyle: 'bold',
+        stroke: '#1e100a',
+        strokeThickness: 2
       })
       .setDepth(31);
 
     this.add
       .text(312, 14, '國庫存銀：', {
-        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
         fontSize: '13px',
         color: '#fff8e7',
-        fontStyle: 'bold'
+        fontStyle: 'bold',
+        stroke: '#1e100a',
+        strokeThickness: 2
       })
       .setDepth(31);
 
     this.silverText = this.add
       .text(382, 14, '', {
-        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
         fontSize: '14px',
         color: '#ffd54f',
-        fontStyle: 'bold'
+        fontStyle: 'bold',
+        stroke: '#1e100a',
+        strokeThickness: 2
       })
       .setDepth(31);
 
@@ -166,7 +168,6 @@ export class SouthernTourMinigame extends Phaser.Scene {
       .setOrigin(0, 0.5)
       .setDepth(32);
 
-    // 雕龍御船：觸控拖曳可在運河內上下左右移動；鍵盤亦可操控
     this.boat = this.add
       .image(102, LANE_Y[this.currentLane], 'royal_boat')
       .setScale(0.75)
@@ -176,7 +177,6 @@ export class SouthernTourMinigame extends Phaser.Scene {
       const nx = Phaser.Math.Clamp(x, 56, STAGE_W - 72);
       const ny = Phaser.Math.Clamp(y, 138, 318);
       this.boat.setPosition(nx, ny);
-      // Keep lane index for HUD / legacy; collision uses free Y
       let best = 0;
       let bestDist = Number.POSITIVE_INFINITY;
       for (let i = 0; i < LANE_Y.length; i++) {
@@ -189,8 +189,6 @@ export class SouthernTourMinigame extends Phaser.Scene {
       this.currentLane = best;
     };
 
-    // Raw window-capture touch/pointer: any playfield press starts a drag,
-    // then follow the finger inside canal X/Y clamps (iPad Safari-safe).
     const inPlayfield = (wx: number, wy: number) =>
       wx >= -40 && wx <= STAGE_W + 40 && wy >= 90 && wy <= STAGE_H + 20;
 
@@ -240,12 +238,13 @@ export class SouthernTourMinigame extends Phaser.Scene {
     });
   }
 
-  private fitViewport(w: number, h: number): void {
+  private fitViewport(gameW: number, gameH: number): void {
+    const { width: w, height: h, dpr } = toCssSize(gameW, gameH);
     const cam = this.cameras.main;
     const usableH = Math.max(250, h - 84);
     const rawZoom = Math.min(w / STAGE_W, usableH / STAGE_H);
-    const zoom = rawZoom >= 1 ? Math.max(1, Math.floor(rawZoom)) : rawZoom;
-    cam.setZoom(zoom);
+    const cssZoom = rawZoom >= 1 ? Math.max(1, Math.floor(rawZoom)) : rawZoom;
+    cam.setZoom(cssZoom * dpr);
     cam.centerOn(STAGE_W / 2, STAGE_H / 2 + 18);
   }
 
@@ -271,8 +270,7 @@ export class SouthernTourMinigame extends Phaser.Scene {
         74,
         `第 ${stop.voyageNo} 次南巡開支 -${stop.costSilver}萬兩`,
         {
-          fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
-          fontSize: '13px',
+          fontSize: '13.5px',
           color: '#ff9e99',
           fontStyle: 'bold',
           stroke: '#24120c',
@@ -296,8 +294,7 @@ export class SouthernTourMinigame extends Phaser.Scene {
         124,
         `第 ${stop.voyageNo} 次遊江南：抵達 ${stop.city}`,
         {
-          fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
-          fontSize: '14px',
+          fontSize: '14.5px',
           color: '#ffe89e',
           backgroundColor: '#7d1c14',
           padding: { x: 10, y: 4 },
@@ -346,12 +343,12 @@ export class SouthernTourMinigame extends Phaser.Scene {
         .image(0, 0, 'palace_tiles', TileIndex.FLEET_BANNER)
         .setScale(1.45);
       const lbl = this.add
-        .text(0, -22, '治河民情', {
-          fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
-          fontSize: '11px',
-          color: '#d5f0e5',
+        .text(0, -23, '治河民情', {
+          fontSize: '11.5px',
+          color: '#e8fcf4',
           backgroundColor: '#1e5c45',
-          padding: { x: 3, y: 1 }
+          padding: { x: 4, y: 1.5 },
+          fontStyle: 'bold'
         })
         .setOrigin(0.5);
       cont.add([flag, lbl]);
@@ -360,12 +357,12 @@ export class SouthernTourMinigame extends Phaser.Scene {
         .image(0, 2, 'palace_tiles', TileIndex.TAIHU_ROCK)
         .setScale(1.3);
       const lbl = this.add
-        .text(0, -22, '暗礁', {
-          fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
-          fontSize: '11px',
-          color: '#ffd6d1',
+        .text(0, -23, '暗礁', {
+          fontSize: '11.5px',
+          color: '#ffe0dc',
           backgroundColor: '#6e1c14',
-          padding: { x: 3, y: 1 }
+          padding: { x: 4, y: 1.5 },
+          fontStyle: 'bold'
         })
         .setOrigin(0.5);
       cont.add([rock, lbl]);
@@ -384,7 +381,6 @@ export class SouthernTourMinigame extends Phaser.Scene {
     const dt = delta / 1000;
     const scrollSpeed = 152;
 
-    // Keyboard free movement inside the canal
     if (!this.boatDragging && this.cursors) {
       let kx = 0;
       let ky = 0;
@@ -458,8 +454,7 @@ export class SouthernTourMinigame extends Phaser.Scene {
           obs.sprite.setVisible(false);
           const praise = this.add
             .text(this.boat.x, this.boat.y - 28, '瞭解民情・治理河道！', {
-              fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
-              fontSize: '13px',
+              fontSize: '13.5px',
               color: '#98ffd0',
               fontStyle: 'bold',
               stroke: '#16382b',
@@ -522,12 +517,13 @@ export class SouthernTourMinigame extends Phaser.Scene {
 
     const txt = this.add
       .text(STAGE_W / 2, STAGE_H / 2 - 18, summary, {
-        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
-        fontSize: '14px',
+        fontSize: '14.5px',
         color: '#fff8e7',
         fontStyle: 'bold',
         align: 'center',
-        lineSpacing: 5
+        lineSpacing: 5,
+        stroke: '#1b0d08',
+        strokeThickness: 2.5
       })
       .setOrigin(0.5);
 
@@ -542,9 +538,8 @@ export class SouthernTourMinigame extends Phaser.Scene {
         STAGE_H / 2 + 70,
         won ? '完成挑戰，返回碼頭 ▶' : '重新啟航 ↻',
         {
-          fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
           fontSize: '15px',
-          color: '#2b1808',
+          color: '#241304',
           fontStyle: 'bold'
         }
       )

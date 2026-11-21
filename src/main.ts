@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import './art/assetUrl';
 import './style.css';
+import { getCanvasDpr, installCrispChineseTextPatch } from './gfx/CrispVisuals';
 import { ArcheryMinigame } from './minigames/ArcheryMinigame';
 import { SouthernTourMinigame } from './minigames/SouthernTourMinigame';
 import { TalentMinigame } from './minigames/TalentMinigame';
@@ -12,6 +13,9 @@ import { OpeningScene } from './scenes/OpeningScene';
 import { PreloadScene } from './scenes/PreloadScene';
 import { TitleScene } from './scenes/TitleScene';
 import { HudUI } from './ui/HudUI';
+
+// 啟動前安裝繁體中文字 4x 高解析平滑渲染修補
+installCrispChineseTextPatch();
 
 const ui = new HudUI('hud-overlay');
 
@@ -31,12 +35,13 @@ function readViewportSize(): { width: number; height: number } {
 }
 
 const initialSize = readViewportSize();
+const initialDpr = getCanvasDpr();
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
   parent: 'game-canvas-host',
-  width: initialSize.width,
-  height: initialSize.height,
+  width: Math.max(1, Math.floor(initialSize.width * initialDpr)),
+  height: Math.max(1, Math.floor(initialSize.height * initialDpr)),
   backgroundColor: '#1a100c',
   pixelArt: true,
   roundPixels: true,
@@ -77,17 +82,21 @@ const game = new Phaser.Game(config);
 /**
  * Always refresh cached canvasBounds (iPad Safari visualViewport can scroll /
  * offset without a size change; stale bounds make touches miss the boat).
- * Still resize when the painted size actually changes.
+ * Render backing buffer at Retina DPR (up to 2x) while CSS stays 100% viewport.
  */
 function syncGameToVisualViewport(): void {
   const { width, height } = readViewportSize();
-  if (game.scale.width !== width || game.scale.height !== height) {
-    game.scale.resize(width, height);
+  const dpr = getCanvasDpr();
+  const targetW = Math.max(1, Math.floor(width * dpr));
+  const targetH = Math.max(1, Math.floor(height * dpr));
+  if (game.scale.width !== targetW || game.scale.height !== targetH) {
+    game.scale.resize(targetW, targetH);
   }
-  // refresh/updateBounds even when size is unchanged — clears stale page offsets
+  // refresh/updateBounds even when size is unchanged — syncs displayScale & page offsets
   game.scale.refresh();
 }
 
+window.requestAnimationFrame(syncGameToVisualViewport);
 window.addEventListener('resize', syncGameToVisualViewport);
 window.addEventListener('orientationchange', () => {
   window.setTimeout(syncGameToVisualViewport, 50);

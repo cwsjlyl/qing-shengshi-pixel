@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { CHAR_HD_SCALE, toCssSize } from '../gfx/CrispVisuals';
 import { CHAR_IDLE_FRAME, TILE_SIZE, TileIndex } from '../gfx/PixelArtGenerator';
 import { gameState } from '../state/gameState';
 import { HudUI } from '../ui/HudUI';
@@ -99,7 +100,7 @@ export class TalentMinigame extends Phaser.Scene {
     stopOtherScenes(this);
     clearStaleTitleOrOpeningHud(this);
 
-        this.cameras.main.setBackgroundColor('#261812');
+    this.cameras.main.setBackgroundColor('#261812');
     this.input.setTopOnly(false);
     this.fitViewport(this.scale.width, this.scale.height);
 
@@ -111,7 +112,6 @@ export class TalentMinigame extends Phaser.Scene {
       this.scale.off('resize', onResize);
     });
 
-    // 全幅宮殿磚牆與金磚背景
     for (let y = -4; y < 22; y++) {
       for (let x = -6; x < 28; x++) {
         const tile =
@@ -126,20 +126,19 @@ export class TalentMinigame extends Phaser.Scene {
       }
     }
 
-    // 頂部標題牌匾
     this.add
       .rectangle(STAGE_W / 2, 28, STAGE_W - 24, 40, 0x7a1b13, 0.96)
       .setStrokeStyle(2.5, 0xf0c246);
     this.add
       .text(STAGE_W / 2, 28, '康熙：用人唯才・滿漢一家（點選或拖放人才到職位）', {
-        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
         fontSize: '15px',
         color: '#ffe89e',
-        fontStyle: 'bold'
+        fontStyle: 'bold',
+        stroke: '#2b0b06',
+        strokeThickness: 2.5
       })
       .setOrigin(0.5);
 
-    // 職位槽位
     for (const slot of POST_SLOTS) {
       const fill = slot.isRejectZone ? 0x4a2420 : 0x3b2a1c;
       const stroke = slot.isRejectZone ? 0xd96b5c : 0xe8ba4b;
@@ -150,18 +149,19 @@ export class TalentMinigame extends Phaser.Scene {
 
       this.add
         .text(slot.x, slot.y - 20, slot.title, {
-          fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
-          fontSize: '13px',
-          color: slot.isRejectZone ? '#ffb4a8' : '#ffe48a',
-          fontStyle: 'bold'
+          fontSize: '13.5px',
+          color: slot.isRejectZone ? '#ffb8ad' : '#ffe898',
+          fontStyle: 'bold',
+          stroke: '#1c100a',
+          strokeThickness: 2
         })
         .setOrigin(0.5);
 
       this.add
-        .text(slot.x, slot.y - 2, slot.desc, {
-          fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
-          fontSize: '11.5px',
-          color: '#dfd4bd'
+        .text(slot.x, slot.y - 1, slot.desc, {
+          fontSize: '12px',
+          color: '#f2ead9',
+          fontStyle: 'bold'
         })
         .setOrigin(0.5);
 
@@ -171,7 +171,6 @@ export class TalentMinigame extends Phaser.Scene {
       });
     }
 
-    // 底部候選人才盤與呈交按鈕
     this.add
       .rectangle(STAGE_W / 2, 314, STAGE_W - 16, 114, 0x1e130e, 0.94)
       .setStrokeStyle(2, 0x8c6239);
@@ -183,7 +182,6 @@ export class TalentMinigame extends Phaser.Scene {
       this.createCandidateCard(cand, cx, cy);
     });
 
-    // Scene-level drag using camera world points (fixes Container hit-area / zoom bugs on iPad)
     const pointerWorld = (p: Phaser.Input.Pointer) =>
       this.cameras.main.getWorldPoint(p.x, p.y);
     const hitCardId = (wx: number, wy: number): string | null => {
@@ -192,7 +190,6 @@ export class TalentMinigame extends Phaser.Scene {
       this.cardContainers.forEach((cont, id) => {
         if (!cont.visible) return;
         const d = Phaser.Math.Distance.Between(wx, wy, cont.x, cont.y);
-        // Entire visible card (~96x92) is grabbable
         if (
           Math.abs(wx - cont.x) <= 52 &&
           Math.abs(wy - cont.y) <= 50 &&
@@ -256,9 +253,8 @@ export class TalentMinigame extends Phaser.Scene {
 
     this.add
       .text(478, 314, '呈交\n任用\n名單', {
-        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
         fontSize: '15px',
-        color: '#2b1808',
+        color: '#241304',
         fontStyle: 'bold',
         align: 'center'
       })
@@ -287,12 +283,13 @@ export class TalentMinigame extends Phaser.Scene {
     });
   }
 
-  private fitViewport(w: number, h: number): void {
+  private fitViewport(gameW: number, gameH: number): void {
+    const { width: w, height: h, dpr } = toCssSize(gameW, gameH);
     const cam = this.cameras.main;
     const usableH = Math.max(260, h - 84);
     const rawZoom = Math.min(w / STAGE_W, usableH / STAGE_H);
-    const zoom = rawZoom >= 1 ? Math.max(1, Math.floor(rawZoom)) : rawZoom;
-    cam.setZoom(zoom);
+    const cssZoom = rawZoom >= 1 ? Math.max(1, Math.floor(rawZoom)) : rawZoom;
+    cam.setZoom(cssZoom * dpr);
     cam.centerOn(STAGE_W / 2, STAGE_H / 2 + 18);
   }
 
@@ -301,13 +298,12 @@ export class TalentMinigame extends Phaser.Scene {
     const tagColor = cand.ethnicity === '滿族' ? 0x284d7a : 0x256e54;
 
     const bg = this.add
-      .rectangle(0, 0, 96, 92, 0xfbf5e6, 1)
+      .rectangle(0, 0, 98, 94, 0xfdf8ec, 1)
       .setStrokeStyle(2, 0x7d582d);
 
-    const ethBadge = this.add.rectangle(0, -33, 86, 18, tagColor, 1);
+    const ethBadge = this.add.rectangle(0, -34, 88, 19, tagColor, 1);
     const ethText = this.add
-      .text(0, -33, `${cand.ethnicity}・${cand.name}`, {
-        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
+      .text(0, -34, `${cand.ethnicity}・${cand.name}`, {
         fontSize: '12px',
         color: '#ffffff',
         fontStyle: 'bold'
@@ -316,23 +312,18 @@ export class TalentMinigame extends Phaser.Scene {
 
     const spr = this.add
       .sprite(0, -2, cand.spriteKey, CHAR_IDLE_FRAME.down)
-      .setScale(1.05);
+      .setScale(1.12 / CHAR_HD_SCALE);
 
     const specText = this.add
-      .text(0, 31, cand.specialty, {
-        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
-        fontSize: '11px',
-        color: '#2b1d14',
+      .text(0, 32, cand.specialty, {
+        fontSize: '11.5px',
+        color: '#21140c',
         fontStyle: 'bold'
       })
       .setOrigin(0.5);
 
-    // Full-card invisible pad (visual children are centered at 0,0)
     const pad = this.add.rectangle(0, 0, 110, 108, 0xffffff, 0.001);
     container.add([bg, ethBadge, ethText, spr, specText, pad]);
-    // Do NOT call setSize() — it recenters displayOrigin so a centered
-    // hit rect only covers the top-left of the visual card on iPad.
-    // Scene-level getWorldPoint drag (above) is the primary input path.
     container.setInteractive(
       new Phaser.Geom.Rectangle(-55, -54, 110, 108),
       Phaser.Geom.Rectangle.Contains
@@ -381,7 +372,7 @@ export class TalentMinigame extends Phaser.Scene {
     this.assignments.set(candId, slotId);
     const cont = this.cardContainers.get(candId);
     if (cont) {
-      cont.setScale(0.72);
+      cont.setScale(0.74);
       const offset = slot.isRejectZone
         ? (CANDIDATES.findIndex((c) => c.id === candId) - 1.5) * 14
         : 0;
@@ -446,12 +437,13 @@ export class TalentMinigame extends Phaser.Scene {
         STAGE_H / 2 - 26,
         '挑戰成功！\n「只要是人才，不論滿族還是漢族都會任用」\n漢族士人反抗意識消除，朝廷人才鼎盛！',
         {
-          fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
           fontSize: '16px',
           color: '#fff8e7',
           fontStyle: 'bold',
           align: 'center',
-          lineSpacing: 6
+          lineSpacing: 6,
+          stroke: '#0f2b20',
+          strokeThickness: 2.5
         }
       )
       .setOrigin(0.5);
@@ -463,9 +455,8 @@ export class TalentMinigame extends Phaser.Scene {
 
     const backLabel = this.add
       .text(STAGE_W / 2, STAGE_H / 2 + 54, '完成挑戰，返回庭院 ▶', {
-        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
         fontSize: '15px',
-        color: '#2b1808',
+        color: '#241304',
         fontStyle: 'bold'
       })
       .setOrigin(0.5);

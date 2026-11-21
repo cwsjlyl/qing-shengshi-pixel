@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { enhanceAllCharacterTextures } from '../gfx/CrispVisuals';
 import { PixelArtGenerator } from '../gfx/PixelArtGenerator';
 import { resolveAssetUrl } from './assetUrl';
 import { OriginalArtLoader } from './OriginalArtLoader';
@@ -41,7 +42,7 @@ export class ClassroomAssetPipeline {
   }
 
   /**
-   * 將貼圖生成拆分為非阻塞幀間階段，避免 iPad Safari 在 100% 時主執行緒卡頓凍結
+   * 將貼圖生成拆分為非阻塞幀間階段，並對全部角色執行 4x 高清邊緣與輪廓強化
    */
   public static async buildAllTexturesStaged(
     scene: Phaser.Scene,
@@ -51,9 +52,13 @@ export class ClassroomAssetPipeline {
     await nextAnimationFrame();
     PixelArtGenerator.generateAll(scene);
 
-    onProgress?.(0.92, '正在拼合宮苑地磚與康雍乾人物動畫……');
+    onProgress?.(0.91, '正在拼合宮苑地磚與原創建築……');
     await nextAnimationFrame();
     OriginalArtLoader.buildAllFromLoadedAssets(scene);
+
+    onProgress?.(0.97, '正在強化康雍乾人物高清輪廓……');
+    await nextAnimationFrame();
+    enhanceAllCharacterTextures(scene);
 
     onProgress?.(1.0, '課堂資源準備完成！');
     await nextAnimationFrame();
