@@ -28,7 +28,13 @@ import {
   REMONSTRANCE_SUGGESTIONS,
   buildQianlongGeminiPrompt
 } from '../data/qianlongAsk';
-import { MEDAL_LABELS, gameState } from '../state/gameState';
+import {
+  MEDAL_LABELS,
+  ViewZoomPreset,
+  ZOOM_PRESET_LABELS,
+  ZOOM_PRESET_ORDER,
+  gameState
+} from '../state/gameState';
 import {
   getPortraitForSpeaker,
   renderHistorianCertificateDataUrl
@@ -45,6 +51,8 @@ export interface NavigationHandlers {
   onGoTitle?: () => void;
   onGoClassSelect?: () => void;
   onResetSave?: () => void;
+  onCycleZoom?: () => void;
+  onSelectZoomPreset?: (preset: ViewZoomPreset) => void;
 }
 
 export class HudUI {
@@ -84,6 +92,9 @@ export class HudUI {
       <div id="hud-main-layer"></div>
       <div id="hud-minimap-host" aria-hidden="true"></div>
       <div id="hud-top-right">
+        <button id="btn-hud-zoom" class="settings-fab" type="button" style="display:none;" aria-label="切換視野遠近">
+          <span>🔍</span><span id="hud-zoom-label">廣角</span>
+        </button>
         <button id="btn-hud-notebook" class="settings-fab notebook-fab" type="button" aria-label="奏摺證據簿">
           <span>📜</span><span>證據簿</span>
         </button>
@@ -98,6 +109,13 @@ export class HudUI {
     this.minimapHost = this.root.querySelector('#hud-minimap-host')!;
     this.topRightLayer = this.root.querySelector('#hud-top-right')!;
     this.settingsLayer = this.root.querySelector('#hud-settings-layer')!;
+
+    this.topRightLayer
+      .querySelector('#btn-hud-zoom')
+      ?.addEventListener('click', () => {
+        this.navHandlers.onCycleZoom?.();
+        this.refreshZoomFab();
+      });
 
     this.topRightLayer
       .querySelector('#btn-hud-notebook')
@@ -120,6 +138,18 @@ export class HudUI {
       });
   }
 
+  private refreshZoomFab(): void {
+    const zoomBtn = this.topRightLayer.querySelector<HTMLButtonElement>('#btn-hud-zoom');
+    const zoomLbl = this.topRightLayer.querySelector<HTMLElement>('#hud-zoom-label');
+    if (!zoomBtn || !zoomLbl) return;
+    if (this.navHandlers.onCycleZoom) {
+      zoomBtn.style.display = 'inline-flex';
+      zoomLbl.textContent = ZOOM_PRESET_LABELS[gameState.zoomPreset];
+    } else {
+      zoomBtn.style.display = 'none';
+    }
+  }
+
   public get isModalOpen(): boolean {
     return this.isPanelModalOpen || this.isSettingsOpen;
   }
@@ -133,6 +163,7 @@ export class HudUI {
 
   public setNavigationHandlers(handlers: NavigationHandlers): void {
     this.navHandlers = handlers;
+    this.refreshZoomFab();
   }
 
   public resetInputState(): void {
@@ -229,12 +260,25 @@ export class HudUI {
     const canGoTitle = Boolean(this.navHandlers.onGoTitle);
     const hasSave = gameState.hasSavedProgress();
 
+    const zoomBtnsHtml = ZOOM_PRESET_ORDER.map((preset) => {
+      const isCur = gameState.zoomPreset === preset;
+      return `
+        <button type="button" class="pixel-btn ${isCur ? 'jade' : 'secondary'}" data-zoom-preset="${preset}" style="padding:6px 8px;font-size:13px;">
+          ${isCur ? '✓ ' : ''}${ZOOM_PRESET_LABELS[preset]}
+        </button>
+      `;
+    }).join('');
+
     this.settingsLayer.innerHTML = `
       <div class="overlay-backdrop" id="settings-backdrop">
-        <div class="card-modal" style="max-width:450px;">
+        <div class="card-modal" style="max-width:460px;">
           <div class="panel-header">
-            <span>遊戲設定與說明</span>
-            <span class="badge-sub">單一主畫面</span>
+            <span>遊戲設定與視野調整</span>
+            <span class="badge-sub">iPad 廣角版</span>
+          </div>
+          <div class="panel-box" style="display:flex;flex-direction:column;gap:8px;">
+            <div style="font-weight:800;font-size:14px;color:#681711;">🔍 探索地圖視野遠近（亦可於地圖上雙指捏合縮放）</div>
+            <div class="btn-row">${zoomBtnsHtml}</div>
           </div>
           <div class="panel-box" style="display:flex;flex-direction:column;gap:8px;">
             <div style="font-weight:800;font-size:14px;color:#681711;">雙軌操作說明</div>
@@ -264,6 +308,19 @@ export class HudUI {
         </div>
       </div>
     `;
+
+    this.settingsLayer
+      .querySelectorAll<HTMLButtonElement>('[data-zoom-preset]')
+      .forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const preset = btn.dataset.zoomPreset as ViewZoomPreset;
+          gameState.zoomPreset = preset;
+          gameState.persist();
+          this.navHandlers.onSelectZoomPreset?.(preset);
+          this.refreshZoomFab();
+          this.openSettingsModal();
+        });
+      });
 
     this.settingsLayer
       .querySelector('#btn-set-resume')
@@ -448,11 +505,11 @@ export class HudUI {
     }
 
     if (viewTiles) {
-      const vx = pad + viewTiles.x1 * cellW;
-      const vy = pad + viewTiles.y1 * cellH;
-      const vw = Math.max(cellW, (viewTiles.x2 - viewTiles.x1) * cellW);
-      const vh = Math.max(cellH, (viewTiles.y2 - viewTiles.y1) * cellH);
-      ctx.strokeStyle = 'rgba(255, 248, 220, 0.55)';
+      const vx = pad + Math.max(0, viewTiles.x1) * cellW;
+      const vy = pad + Math.max(0, viewTiles.y1) * cellH;
+      const vw = Math.min(mapW, Math.max(cellW, (viewTiles.x2 - viewTiles.x1) * cellW));
+      const vh = Math.min(mapH, Math.max(cellH, (viewTiles.y2 - viewTiles.y1) * cellH));
+      ctx.strokeStyle = 'rgba(255, 248, 220, 0.62)';
       ctx.lineWidth = 1.5;
       ctx.strokeRect(vx, vy, vw, vh);
     }
@@ -460,7 +517,6 @@ export class HudUI {
     drawMarker(playerTileX, playerTileY, 'rgba(90, 180, 255, 1)', 4.6);
   }
 
-  // 1. 標題畫面疊加啟動卡（含本地存檔續玩、順序探索、課堂分關、向乾隆進諫）
   public renderTitleScreen(
     onSequential: () => void,
     onClassSelect: () => void,
@@ -512,7 +568,6 @@ export class HudUI {
       ?.addEventListener('click', () => onDirectRemonstrate());
   }
 
-  // 2. 開場畫面疊加任務面板
   public renderOpeningScreen(stageName: string, onConfirm: () => void): void {
     this.clearActiveKeyListener();
     this.hideMinimap();
@@ -544,7 +599,6 @@ export class HudUI {
       });
   }
 
-  // 3. 課堂分關疊加選關卡（全通關解鎖「大清特命盛世史官證書」）
   public renderClassSelectScreen(
     onPickStage: (stage: StageId) => void,
     onBackTitle: () => void
@@ -602,7 +656,6 @@ export class HudUI {
       ?.addEventListener('click', () => onBackTitle());
   }
 
-  // 4. 單一主畫面探索 HUD（印章收納進度列 ＋ 跨三朝大清國運儀表）
   public renderExploreHUD(opts: {
     zoneName: string;
     hintText: string;
@@ -613,6 +666,7 @@ export class HudUI {
     this.isPanelModalOpen = false;
     this.onInteractCallback = opts.onInteract;
     this.resetInputState();
+    this.refreshZoomFab();
 
     const stageCfg = STAGES[gameState.currentStage];
     const prog = gameState.getStageProgress();
@@ -845,7 +899,6 @@ export class HudUI {
     });
   }
 
-  // 5. 疊加對話面板（含角色 4x 高清半身頭像、離線粵語朗讀、點按歷史難詞白話註解）
   public showDialogue(
     speaker: string,
     lines: string[],
@@ -950,7 +1003,6 @@ export class HudUI {
     renderStep();
   }
 
-  // 6. 疊加三題選擇題卡牌（含題目朗讀與答錯史料回溯提示）
   public showStageQuiz(
     quizzes: QuizItem[],
     onAllPassed: () => void,
@@ -1065,7 +1117,6 @@ export class HudUI {
     renderQuiz();
   }
 
-  /** 課堂分關完成後彈出「拼圖式合作學習（Jigsaw）組員互教重點卡」 */
   public showJigsawSummaryCard(stageId: StageId, onContinue: () => void): void {
     this.clearActiveKeyListener();
     this.hideMinimap();
@@ -1124,7 +1175,6 @@ export class HudUI {
       });
   }
 
-  /** 特命大清盛世史官電子證書產生與儲存面板 */
   public showCertificateModal(modeTitle: string, onClose: () => void): void {
     this.clearActiveKeyListener();
     this.hideMinimap();
@@ -1198,7 +1248,6 @@ export class HudUI {
     renderCertView();
   }
 
-  // 7. 疊加數字密碼鍵盤卡牌
   public showPasswordPad(opts: {
     title: string;
     hint: string;
@@ -1366,10 +1415,6 @@ export class HudUI {
     }
   }
 
-  /**
-   * 8. 升級版「有根有據（CER）向乾隆皇帝進諫」面板：
-   * 支援勾選晚年隱憂＋前朝治國根據自動組合奏摺草稿，並輸出含乾隆回應、四大後果推演與四格漫畫生圖的 Gemini Prompt
-   */
   public showQianlongRemonstrancePanel(opts: {
     entrySource: 'sequential' | 'title';
     onFinish: () => void;
@@ -1613,7 +1658,6 @@ export class HudUI {
     });
   }
 
-  // 9. 小遊戲單一畫面底部輕量提示列
   public renderMinigamePanel(opts: {
     title: string;
     instruction: string;
@@ -1652,7 +1696,6 @@ export class HudUI {
     if (slot) slot.innerHTML = html;
   }
 
-  // 10. 返回現代結局與反思疊加卡牌（附領取史官證書按鈕）
   public renderEndingScreen(
     onBackTitle: () => void,
     onBackClassSelect: () => void
