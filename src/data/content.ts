@@ -48,7 +48,7 @@ export const STAGE_NAMES: Record<StageId, string> = {
 };
 
 // 僅供程式內部驗證比對
-export const FINAL_TEACHER_PASSWORD = '000';
+export const FINAL_TEACHER_PASSWORD = '111';
 
 export const PROMPTS = {
   QUIZ_PASSED: '答對了！請在出口輸入密碼，繼續行程。',
@@ -77,7 +77,7 @@ export const STAGES: Record<StageId, StageConfig> = {
     id: 'kangxi',
     stageName: '康熙（宮殿庭院）',
     shortTitle: '康熙朝',
-    password: '123',
+    password: '111',
     lockedExitMessage:
       '大門仍然鎖上。請先與康熙皇帝、滿族人和漢族人傾談，收集證據。',
     evidenceReadyMessage: '證據已齊全。請跟著箭嘴走到出口，回答三條問題。',
@@ -137,7 +137,7 @@ export const STAGES: Record<StageId, StageConfig> = {
     id: 'yongzheng',
     stageName: '雍正（大殿）',
     shortTitle: '雍正朝',
-    password: '456',
+    password: '111',
     lockedExitMessage:
       '出口仍然鎖上。請先與雍正皇帝、貪官傾談，並調查國庫線索。',
     evidenceReadyMessage: '證據已齊全。請跟著箭嘴走到出口，回答三條問題。',
@@ -204,7 +204,7 @@ export const STAGES: Record<StageId, StageConfig> = {
     id: 'qianlong',
     stageName: '乾隆（戶外）',
     shortTitle: '乾隆朝',
-    password: '789',
+    password: '111',
     lockedExitMessage:
       '還不能登船。請先走訪準噶爾平亂、和珅、農田和南巡船隊，收集全部證據。',
     evidenceReadyMessage: '證據已齊全。請跟著箭嘴走到碼頭御船，回答三條問題。',
