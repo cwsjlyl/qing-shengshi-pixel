@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import './art/assetUrl';
 import './style.css';
 import { ArcheryMinigame } from './minigames/ArcheryMinigame';
 import { SouthernTourMinigame } from './minigames/SouthernTourMinigame';
@@ -41,6 +42,9 @@ const config: Phaser.Types.Core.GameConfig = {
   roundPixels: true,
   antialias: false,
   antialiasGL: false,
+  loader: {
+    maxParallelDownloads: 4
+  },
   input: {
     activePointers: 3,
     smoothFactor: 0
@@ -94,3 +98,15 @@ if (window.visualViewport) {
   window.visualViewport.addEventListener('scroll', syncGameToVisualViewport);
 }
 
+// 正式部署環境啟用課堂離線與二次秒開快取（兼容 Google Sites iframe 權限防護）
+if (window.__CLASSROOM_PROD__ && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    try {
+      navigator.serviceWorker.register('./sw.js').catch(() => {
+        // Ignore Service Worker restriction in private browsing or cross-origin iframes
+      });
+    } catch {
+      // Ignore synchronous SecurityError in restricted iframes
+    }
+  });
+}

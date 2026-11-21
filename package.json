@@ -6,7 +6,7 @@
   "description": "最後的皇朝：康雍乾盛世 — 香港小學六年級常識科單一主畫面高密度像素課堂教育遊戲",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node ./scripts/optimize-assets.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
