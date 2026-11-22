@@ -7,11 +7,7 @@ import { PixelArtGenerator } from '../gfx/PixelArtGenerator';
 import { extractAllCharacterPortraits } from '../ui/portraitAndCert';
 import { resolveAssetUrl } from './assetUrl';
 import { OriginalArtLoader } from './OriginalArtLoader';
-import {
-  SCHOOL_EXTERIOR_DATA_URI,
-  SCHOOL_EXTERIOR_KEY,
-  ensureSchoolExteriorTexture
-} from './schoolExteriorUri';
+import { loadSchoolExteriorTexture } from './schoolExteriorUri';
 
 function nextAnimationFrame(): Promise<void> {
   return new Promise((resolve) => {
@@ -22,7 +18,6 @@ function nextAnimationFrame(): Promise<void> {
 export class ClassroomAssetPipeline {
   public static preloadAssets(scene: Phaser.Scene): void {
     OriginalArtLoader.preloadAssets(scene);
-    scene.load.image(SCHOOL_EXTERIOR_KEY, SCHOOL_EXTERIOR_DATA_URI);
 
     const fallbackPngByKey = new Map<string, string>();
     const retriedKeys = new Set<string>();
@@ -47,15 +42,15 @@ export class ClassroomAssetPipeline {
   }
 
   /**
-   * 非阻塞分幀貼圖建構 ＋ 完整還原主角校服身體 ＋ CacheStorage 角色高清貼圖快取 ＋ 頭像擷取
+   * 非阻塞分幀貼圖建構 ＋ 原生載入上傳學校圖片 ＋ 完整還原主角校服身體 ＋ 角色高清貼圖快取
    */
   public static async buildAllTexturesStaged(
     scene: Phaser.Scene,
     onProgress?: (ratio: number, status: string) => void
   ): Promise<void> {
-    onProgress?.(0.84, '正在建立基礎像素貼圖……');
+    onProgress?.(0.84, '正在載入校園與基礎像素貼圖……');
     await nextAnimationFrame();
-    ensureSchoolExteriorTexture(scene);
+    await loadSchoolExteriorTexture(scene);
     PixelArtGenerator.generateAll(scene);
 
     onProgress?.(0.91, '正在拼合宮苑地磚與原創建築……');
