@@ -67,7 +67,7 @@ export class PreloadScene extends Phaser.Scene {
       this.updateProgressUI(val * 0.8, `正在載入課堂像素圖集…… ${pct}%`);
     });
 
-    // 載入原創圖集與角色表（優先使用無損 WebP 並支援 PNG 斷線保底重試）
+    // 載入原創圖集、學校外觀與角色表（優先使用無損 WebP 並支援 PNG 斷線保底重試）
     ClassroomAssetPipeline.preloadAssets(this);
   }
 

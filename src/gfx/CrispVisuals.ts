@@ -3,11 +3,12 @@ import Phaser from 'phaser';
 /** 角色精靈圖原生高清邏輯縮放比例（128x168 對應世界 32x42 邏輯尺寸） */
 export const CHAR_HD_SCALE = 4;
 
-const HD_CHAR_CACHE_NAME = 'qing-hd-chars-v4';
+const HD_CHAR_CACHE_NAME = 'qing-hd-chars-v5';
 const LEGACY_CACHE_NAMES = [
   'qing-hd-chars-v1',
   'qing-hd-chars-v2',
-  'qing-hd-chars-v3'
+  'qing-hd-chars-v3',
+  'qing-hd-chars-v4'
 ];
 
 const CRISP_FONT_STACK =
@@ -26,6 +27,8 @@ const CHARACTER_TEXTURE_KEYS = [
   'char_heshen',
   'char_farmer'
 ] as const;
+
+const RAW_SCHOOLBOY_TEX_KEY = 'raw_png_schoolboy';
 
 let crispTextPatched = false;
 
@@ -195,7 +198,9 @@ function registerHdCharSheetAndAnims(
   fw4: number,
   fh4: number
 ): void {
-  scene.textures.remove(key);
+  if (scene.textures.exists(key)) {
+    scene.textures.remove(key);
+  }
   const hdSheet = scene.textures.addSpriteSheet(key, source as HTMLImageElement, {
     frameWidth: fw4,
     frameHeight: fh4
@@ -220,6 +225,78 @@ function registerHdCharSheetAndAnims(
       repeat: -1
     });
   });
+}
+
+/**
+ * 還原完整無損的主角小學生精靈圖（保留白色校服上衣、校章、袖口與白襪像素）：
+ * `char-student-schoolboy.png` 本身已具備原生 RGBA 透明背景，
+ * 避免漫水去背將白色校服誤判為棋盤白格挖空。
+ */
+export function restoreIntactSchoolboySheet(scene: Phaser.Scene): void {
+  if (!scene.textures.exists(RAW_SCHOOLBOY_TEX_KEY)) return;
+  const rawTex = scene.textures.get(RAW_SCHOOLBOY_TEX_KEY);
+  const img = rawTex.getSourceImage();
+  if (!(img instanceof HTMLImageElement) && !(img instanceof HTMLCanvasElement)) {
+    return;
+  }
+  if (img.width < 64 || img.height < 80) return;
+
+  const cellW = Math.max(16, Math.floor(img.width / 4));
+  const cellH = Math.max(20, Math.floor(img.height / 4));
+  const sheetW = cellW * 4;
+  const sheetH = cellH * 4;
+
+  const workCanvas = document.createElement('canvas');
+  workCanvas.width = sheetW;
+  workCanvas.height = sheetH;
+  const wCtx = workCanvas.getContext('2d', { willReadFrequently: true });
+  if (!wCtx) return;
+  wCtx.imageSmoothingEnabled = false;
+  wCtx.clearRect(0, 0, sheetW, sheetH);
+  wCtx.drawImage(img, 0, 0, sheetW, sheetH, 0, 0, sheetW, sheetH);
+
+  const imgData = wCtx.getImageData(0, 0, sheetW, sheetH);
+  const d = imgData.data;
+  const cornerAlphas = [
+    d[3],
+    d[(sheetW - 1) * 4 + 3],
+    d[(sheetH - 1) * sheetW * 4 + 3],
+    d[((sheetH - 1) * sheetW + (sheetW - 1)) * 4 + 3]
+  ];
+  if (cornerAlphas.some((a) => a < 32)) {
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] < 24) {
+        d[i + 3] = 0;
+      }
+    }
+    wCtx.putImageData(imgData, 0, 0);
+  }
+
+  const key = 'char_student';
+  const rawBaseKey = 'char_student_intact_base';
+  const dirs = ['down', 'left', 'right', 'up'] as const;
+  dirs.forEach((dir) => {
+    const animKey = `${key}_${dir}`;
+    if (scene.anims.exists(animKey)) scene.anims.remove(animKey);
+  });
+  if (scene.textures.exists(key)) scene.textures.remove(key);
+  if (scene.textures.exists(rawBaseKey)) scene.textures.remove(rawBaseKey);
+
+  const baseTex = scene.textures.createCanvas(rawBaseKey, sheetW, sheetH);
+  if (!baseTex) return;
+  const bCtx = baseTex.getContext();
+  bCtx.imageSmoothingEnabled = false;
+  bCtx.clearRect(0, 0, sheetW, sheetH);
+  bCtx.drawImage(workCanvas, 0, 0);
+  baseTex.refresh();
+
+  registerHdCharSheetAndAnims(
+    scene,
+    key,
+    baseTex.getSourceImage() as HTMLImageElement,
+    cellW,
+    cellH
+  );
 }
 
 function loadImageFromBlob(blob: Blob): Promise<HTMLImageElement> {
@@ -324,7 +401,7 @@ export async function enhanceAllCharacterTexturesCached(
 
     const fw4 = fw * CHAR_HD_SCALE;
     const fh4 = fh * CHAR_HD_SCALE;
-    const cacheUrl = `./__baked_hd_char__/${key}_${fw4}x${fh4}.png`;
+    const cacheUrl = `./__baked_hd_char_v5__/${key}_${fw4}x${fh4}.png`;
 
     if (cache) {
       try {

@@ -28,13 +28,14 @@ const SPEAKER_TO_SPRITE_KEY: Record<string, string> = {
  * 於貼圖建構完成後，從 11 組 4x 高清角色精靈圖擷取正面半身頭像供對話框顯示
  */
 export function extractAllCharacterPortraits(scene: Phaser.Scene): void {
+  portraitDataUrls.clear();
   const keys = new Set<string>([
     ...Object.values(SPEAKER_TO_SPRITE_KEY),
     'char_student'
   ]);
 
   for (const key of keys) {
-    if (portraitDataUrls.has(key) || !scene.textures.exists(key)) continue;
+    if (!scene.textures.exists(key)) continue;
     const tex = scene.textures.get(key);
     const frame0 = tex.get(0);
     const src = tex.getSourceImage() as HTMLImageElement | HTMLCanvasElement;
@@ -52,7 +53,6 @@ export function extractAllCharacterPortraits(scene: Phaser.Scene): void {
     if (!ctx) continue;
 
     ctx.imageSmoothingEnabled = false;
-    // 取正面第 0 格上半身（頭冠至胸袍），置中放大呈現清晰表情與服飾
     const cropH = Math.floor(fh * 0.82);
     const scale = Math.min((size - 8) / fw, (size - 8) / cropH);
     const drawW = Math.floor(fw * scale);
@@ -101,7 +101,6 @@ export function renderHistorianCertificateDataUrl(opts: {
   canvas.height = H;
   const ctx = canvas.getContext('2d')!;
 
-  // 1. 宮廷宣紙與朱紅描金雙層邊框
   ctx.fillStyle = '#5c150f';
   ctx.fillRect(0, 0, W, H);
 
@@ -116,7 +115,6 @@ export function renderHistorianCertificateDataUrl(opts: {
   ctx.lineWidth = 3;
   ctx.strokeRect(44, 44, W - 88, H - 88);
 
-  // 四角宮廷回紋裝飾
   const corners = [
     [44, 44],
     [W - 72, 44],
@@ -129,7 +127,6 @@ export function renderHistorianCertificateDataUrl(opts: {
     ctx.fillRect(cx, cy, 6, 28);
   }
 
-  // 2. 頂部御匾標題
   ctx.fillStyle = '#8c1d15';
   ctx.fillRect(210, 66, W - 420, 62);
   ctx.strokeStyle = '#f0c246';
@@ -145,7 +142,6 @@ export function renderHistorianCertificateDataUrl(opts: {
   ctx.fillStyle = '#681711';
   ctx.fillText('《最後的皇朝：康雍乾盛世》香港小學六年級常識科歷史探究證書', W / 2, 162);
 
-  // 3. 學生姓名欄
   const displayName = opts.studentName.trim() || '優秀小史官';
   ctx.font = 'bold 34px "PingFang HK", "Microsoft JhengHei", sans-serif';
   ctx.fillStyle = '#1c120d';
@@ -158,7 +154,6 @@ export function renderHistorianCertificateDataUrl(opts: {
   ctx.lineTo(W - 260, 238);
   ctx.stroke();
 
-  // 4. 探究成就與三帝頭像印記
   ctx.font = 'bold 20px "PingFang HK", "Microsoft JhengHei", sans-serif';
   ctx.fillStyle = '#362210';
   ctx.fillText(
@@ -172,7 +167,6 @@ export function renderHistorianCertificateDataUrl(opts: {
     314
   );
 
-  // 繪製三朝皇帝頭像（若已快取）
   const empCards = [
     { key: 'char_kangxi_emperor', label: '康熙・用人唯才', x: 240 },
     { key: 'char_yongzheng_emperor', label: '雍正・嚴懲貪官', x: 480 },
@@ -194,7 +188,6 @@ export function renderHistorianCertificateDataUrl(opts: {
     ctx.fillText(ec.label, ec.x, 408);
   }
 
-  // 5. 小遊戲御賜印章統計
   const mgNames: Array<[string, string]> = [
     ['talent_game', '用人唯才'],
     ['whack_game', '打擊貪官'],
@@ -212,7 +205,6 @@ export function renderHistorianCertificateDataUrl(opts: {
   ctx.fillStyle = '#472e08';
   ctx.fillText(medalSummary, W / 2, 476);
 
-  // 6. 底部朱砂御印與日期
   ctx.save();
   ctx.translate(W - 156, H - 118);
   ctx.strokeStyle = 'rgba(178, 34, 24, 0.85)';

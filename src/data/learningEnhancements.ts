@@ -190,7 +190,7 @@ export function composeCerDraft(
   return `${part1}${part2}`;
 }
 
-/** 離線零流量粵語／普通話語音朗讀（Web Speech API） */
+/** 離線零流量粵語／普通話多角色專屬男聲朗讀（Web Speech API） */
 export function isSpeechSupported(): boolean {
   return typeof window !== 'undefined' && 'speechSynthesis' in window;
 }
@@ -204,29 +204,251 @@ export function stopSpeaking(): void {
   }
 }
 
-export function speakTextCantonese(text: string): boolean {
+export interface SpeakerVoiceProfile {
+  voiceSlot: number;
+  preferElderMale?: boolean;
+  pitch: number;
+  rate: number;
+  roleTag: string;
+}
+
+const SPEAKER_VOICE_PROFILES: Record<string, SpeakerVoiceProfile> = {
+  康熙皇帝: { voiceSlot: 0, pitch: 0.72, rate: 0.88, roleTag: '沉穩帝王男聲' },
+  雍正皇帝: { voiceSlot: 1, pitch: 0.62, rate: 0.95, roleTag: '威嚴果斷男聲' },
+  乾隆皇帝: { voiceSlot: 2, preferElderMale: true, pitch: 0.56, rate: 0.85, roleTag: '雄渾帝王男聲' },
+  滿族人: { voiceSlot: 3, pitch: 0.78, rate: 0.99, roleTag: '豪邁滿臣男聲' },
+  漢族人: { voiceSlot: 4, pitch: 0.88, rate: 0.92, roleTag: '溫文儒生男聲' },
+  貪官甲: { voiceSlot: 5, pitch: 0.66, rate: 0.83, roleTag: '低沉心虛男聲' },
+  貪官乙: { voiceSlot: 6, pitch: 0.9, rate: 1.08, roleTag: '急促慌張男聲' },
+  清兵: { voiceSlot: 7, pitch: 0.76, rate: 1.05, roleTag: '鏗鏘將士男聲' },
+  和珅: { voiceSlot: 8, pitch: 0.84, rate: 1.03, roleTag: '圓滑寵臣男聲' },
+  農夫: { voiceSlot: 9, preferElderMale: true, pitch: 0.52, rate: 0.81, roleTag: '滄桑老農男聲' },
+  御船船夫: { voiceSlot: 10, preferElderMale: true, pitch: 0.58, rate: 0.86, roleTag: '渾厚船夫男聲' },
+  國庫線索: { voiceSlot: 11, pitch: 0.68, rate: 0.91, roleTag: '莊重史官男聲' },
+  南巡船隊: { voiceSlot: 12, pitch: 0.74, rate: 0.94, roleTag: '洪亮隨扈男聲' }
+};
+
+const DEFAULT_MALE_PROFILE: SpeakerVoiceProfile = {
+  voiceSlot: 1,
+  pitch: 0.78,
+  rate: 0.95,
+  roleTag: '清朗旁白男聲'
+};
+
+const MALE_VOICE_KEYWORDS = [
+  'wanlung',
+  'wan-lung',
+  '雲龍',
+  '云龙',
+  'aasing',
+  'aa-sing',
+  '阿成',
+  'eddy',
+  'reed',
+  'rocko',
+  'grandpa',
+  '祖父',
+  '爺爺',
+  '爷爷',
+  'danny',
+  'daniel',
+  'fred',
+  'ralph',
+  'albert',
+  'bruce',
+  'kangkang',
+  '康康',
+  'yunxi',
+  '雲希',
+  '云希',
+  'yunjian',
+  '雲健',
+  '云健',
+  'yunyang',
+  '雲揚',
+  '云扬',
+  'yunjhe',
+  '允哲',
+  'yunhao',
+  'yunze',
+  'male',
+  '男'
+];
+
+const ELDER_MALE_KEYWORDS = ['grandpa', '祖父', '爺爺', '爷爷', 'reed', 'fred'];
+
+const FEMALE_VOICE_KEYWORDS = [
+  'sinji',
+  'sin-ji',
+  'sin ji',
+  '善怡',
+  'hiugaai',
+  'hiumaan',
+  '曉佳',
+  '曉曼',
+  '晓佳',
+  '晓曼',
+  'hsiaochen',
+  'hsiaoyu',
+  '曉臻',
+  '曉雨',
+  'xiaoxiao',
+  'xiaoyi',
+  '曉曉',
+  '曉伊',
+  'tingting',
+  'ting-ting',
+  '婷婷',
+  'meijia',
+  'mei-jia',
+  '美佳',
+  'flo',
+  'sandy',
+  'shelley',
+  'grandma',
+  '祖母',
+  '奶奶',
+  '婆婆',
+  'alice',
+  'victoria',
+  'samantha',
+  'kathy',
+  'lili',
+  'shanshan',
+  'jiajia',
+  'female',
+  '女'
+];
+
+function classifyVoiceGender(v: SpeechSynthesisVoice): 'male' | 'female' | 'unknown' {
+  const label = `${v.name} ${v.voiceURI}`.toLowerCase();
+  if (MALE_VOICE_KEYWORDS.some((kw) => label.includes(kw))) return 'male';
+  if (FEMALE_VOICE_KEYWORDS.some((kw) => label.includes(kw))) return 'female';
+  return 'unknown';
+}
+
+function isCantoneseVoice(v: SpeechSynthesisVoice): boolean {
+  const lang = v.lang.toLowerCase();
+  const name = v.name.toLowerCase();
+  return (
+    lang.includes('zh-hk') ||
+    lang.includes('yue') ||
+    name.includes('cantonese') ||
+    name.includes('hong kong') ||
+    name.includes('粵') ||
+    name.includes('香港')
+  );
+}
+
+function isChineseVoice(v: SpeechSynthesisVoice): boolean {
+  const lang = v.lang.toLowerCase();
+  return lang.startsWith('zh') || lang.includes('yue') || lang.includes('cmn');
+}
+
+if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+  try {
+    window.speechSynthesis.getVoices();
+    window.speechSynthesis.addEventListener?.('voiceschanged', () => {
+      window.speechSynthesis.getVoices();
+    });
+  } catch {
+    // Ignore restricted speech APIs
+  }
+}
+
+function selectMaleVoiceForProfile(
+  voices: SpeechSynthesisVoice[],
+  profile: SpeakerVoiceProfile
+): { voice: SpeechSynthesisVoice | null; pitchMultiplier: number } {
+  const cantonese = voices.filter(isCantoneseVoice);
+  const cantoneseMale = cantonese.filter((v) => classifyVoiceGender(v) === 'male');
+  const cantoneseUnknown = cantonese.filter((v) => classifyVoiceGender(v) === 'unknown');
+
+  if (cantoneseMale.length > 0) {
+    if (profile.preferElderMale) {
+      const elder = cantoneseMale.find((v) =>
+        ELDER_MALE_KEYWORDS.some((kw) =>
+          `${v.name} ${v.voiceURI}`.toLowerCase().includes(kw)
+        )
+      );
+      if (elder) return { voice: elder, pitchMultiplier: 1 };
+    }
+    return {
+      voice: cantoneseMale[profile.voiceSlot % cantoneseMale.length],
+      pitchMultiplier: 1
+    };
+  }
+
+  if (cantoneseUnknown.length > 0) {
+    return {
+      voice: cantoneseUnknown[profile.voiceSlot % cantoneseUnknown.length],
+      pitchMultiplier: 0.88
+    };
+  }
+
+  if (cantonese.length > 0) {
+    return {
+      voice: cantonese[profile.voiceSlot % cantonese.length],
+      pitchMultiplier: 0.76
+    };
+  }
+
+  const chinese = voices.filter(isChineseVoice);
+  const chineseMale = chinese.filter((v) => classifyVoiceGender(v) === 'male');
+  if (chineseMale.length > 0) {
+    return {
+      voice: chineseMale[profile.voiceSlot % chineseMale.length],
+      pitchMultiplier: 1
+    };
+  }
+
+  if (chinese.length > 0) {
+    return {
+      voice: chinese[profile.voiceSlot % chinese.length],
+      pitchMultiplier: 0.82
+    };
+  }
+
+  return { voice: null, pitchMultiplier: 0.85 };
+}
+
+export function speakTextCantonese(text: string, explicitSpeaker?: string): boolean {
   if (!isSpeechSupported()) return false;
   try {
     window.speechSynthesis.cancel();
     const clean = text.replace(/[✓★☆○💡🗣️📋🔊]/g, '').trim();
     if (!clean) return false;
 
-    const utter = new SpeechSynthesisUtterance(clean);
-    const voices = window.speechSynthesis.getVoices();
-    const hkVoice =
-      voices.find((v) => v.lang.toLowerCase().includes('zh-hk')) ||
-      voices.find((v) => v.lang.toLowerCase().includes('yue')) ||
-      voices.find((v) => v.lang.toLowerCase().includes('zh-tw')) ||
-      voices.find((v) => v.lang.toLowerCase().startsWith('zh'));
+    let speaker = explicitSpeaker?.trim() || '';
+    let spokenBody = clean;
 
-    if (hkVoice) {
-      utter.voice = hkVoice;
-      utter.lang = hkVoice.lang;
+    const prefixMatch = spokenBody.match(/^([^：:\s]{1,12})說[：:]\s*([\s\S]+)$/);
+    if (prefixMatch) {
+      if (!speaker) {
+        speaker = prefixMatch[1];
+      }
+      if (SPEAKER_VOICE_PROFILES[prefixMatch[1]]) {
+        spokenBody = prefixMatch[2].trim();
+      }
+    }
+
+    const profile = SPEAKER_VOICE_PROFILES[speaker] ?? DEFAULT_MALE_PROFILE;
+    const utter = new SpeechSynthesisUtterance(spokenBody);
+    const voices = window.speechSynthesis.getVoices();
+    const { voice, pitchMultiplier } = selectMaleVoiceForProfile(voices, profile);
+
+    if (voice) {
+      utter.voice = voice;
+      utter.lang = voice.lang;
     } else {
       utter.lang = 'zh-HK';
     }
-    utter.rate = 0.96;
-    utter.pitch = 1.0;
+
+    const finalPitch = Math.max(0.5, Math.min(1.2, profile.pitch * pitchMultiplier));
+    utter.pitch = Number(finalPitch.toFixed(2));
+    utter.rate = Number(profile.rate.toFixed(2));
+    utter.volume = 1;
+
     window.speechSynthesis.speak(utter);
     return true;
   } catch {

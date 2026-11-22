@@ -1,5 +1,9 @@
 import Phaser from 'phaser';
 import { PALACE_TILES_HD_KEY, TILE_HD_PX } from '../art/OriginalArtLoader';
+import {
+  SCHOOL_EXTERIOR_KEY,
+  ensureSchoolExteriorTexture
+} from '../art/schoolExteriorUri';
 import { PROMPTS, STAGES, STAGE_NAMES, StageId } from '../data/content';
 import { CHAR_HD_SCALE, toCssSize } from '../gfx/CrispVisuals';
 import {
@@ -103,7 +107,7 @@ export class ExploreScene extends Phaser.Scene {
     this.cameras.main.setRoundPixels(true);
     this.input.setTopOnly(false);
 
-    // 1. 採用 48x48 雙倍高清地磚烘焙至 RenderTexture（兼具 4 倍像素銳利度與極低 Draw Calls）
+    // 1. 採用 48x48 雙倍高清地磚烘焙至 RenderTexture
     const hasHdTiles = this.textures.exists(PALACE_TILES_HD_KEY);
     const tileTexKey = hasHdTiles ? PALACE_TILES_HD_KEY : 'palace_tiles';
     const stepPx = hasHdTiles ? TILE_HD_PX : TILE_SIZE;
@@ -213,7 +217,7 @@ export class ExploreScene extends Phaser.Scene {
       });
     }
 
-    // 4. 原生全解析度 128x168 角色精靈（含自然呼吸律動）、腳下中文名牌與頭頂互動玉牌
+    // 4. 原生全解析度 128x168 角色精靈（康熙關「漢族人」改為正面顯示）
     this.mapData.triggers.forEach((trig, idx) => {
       const tx = trig.tileX * TILE_SIZE + TILE_SIZE / 2;
       const ty = trig.tileY * TILE_SIZE + TILE_SIZE / 2;
@@ -222,7 +226,7 @@ export class ExploreScene extends Phaser.Scene {
         shadowGraphics.fillStyle(0x090504, 0.34);
         shadowGraphics.fillEllipse(tx, ty + 2, 24, 8);
 
-        const facing = trig.facing || 'down';
+        const facing = trig.id === 'han_person' ? 'down' : trig.facing || 'down';
         const frame = CHAR_IDLE_FRAME[facing];
         const baseScale = 1.22 / CHAR_HD_SCALE;
         const npcSprite = this.add
@@ -257,9 +261,8 @@ export class ExploreScene extends Phaser.Scene {
           if (ui.isModalOpen || this.isDepartingCutscene) return;
           if (this.isNearTrigger(trig, 58)) {
             this.clearWalkTarget();
-            npcSprite.setFrame(
-              CHAR_IDLE_FRAME[this.getOppositeFacing(this.playerDir)]
-            );
+            const opp = this.getOppositeFacing(this.playerDir);
+            npcSprite.setFrame(CHAR_IDLE_FRAME[opp === 'up' ? 'down' : opp]);
             this.handleTriggerAction(trig);
           } else {
             this.setTapWalkTarget(tx, ty + 14, trig);
@@ -338,10 +341,11 @@ export class ExploreScene extends Phaser.Scene {
       .setDepth(9.4);
 
     this.player = this.add
-      .sprite(startPx, startPy, 'char_student', CHAR_IDLE_FRAME.up)
+      .sprite(startPx, startPy, 'char_student', CHAR_IDLE_FRAME.down)
       .setOrigin(0.5, 0.92)
       .setScale(1.22 / CHAR_HD_SCALE)
       .setDepth(12);
+    this.playerDir = 'down';
 
     // 5b. 雙軌操控（點地即走）＋ iPad 雙指捏合自由縮放視野
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
@@ -474,7 +478,7 @@ export class ExploreScene extends Phaser.Scene {
       .setDepth(45)
       .setVisible(false);
 
-    // 8. iPad 廣角優先攝影機（預設 1.5x CSS Zoom -> 可視範圍擴大 4 倍，看清全院建築與人物）
+    // 8. iPad 廣角優先攝影機
     const cam = this.cameras.main;
     cam.setBounds(0, 0, worldW, worldH);
     this.applyCameraZoom(this.scale.width, this.scale.height);
@@ -512,7 +516,7 @@ export class ExploreScene extends Phaser.Scene {
       this.wasd.ENTER.on('down', keyTrigger);
     }
 
-    // 10. 註冊右上角「視野縮放、證據簿、設定」選單處理
+    // 10. 註冊右上角選單處理
     const ui = this.registry.get('ui') as HudUI;
     const savePos = () => {
       if (!this.isDepartingCutscene && this.player) {
@@ -812,12 +816,6 @@ export class ExploreScene extends Phaser.Scene {
     }
   }
 
-  /**
-   * 針對 iPad 課堂大幅調寬預設視野：
-   * - 預設「廣角（wide）」於 iPad 使用 1.5x CSS Zoom（在 2x Retina 畫布即 3.0 整數物理像素倍率，清晰無鋸齒），
-   *   較舊版 3.0x 擴大整整 4 倍可視地圖面積（一次看清約 28x21 格宮殿庭院與河岸人物）！
-   * - 亦支援「全景 1.25x」、「適中 2.0x」、「近景 2.5x」一鍵切換或雙指捏合微調。
-   */
   private applyCameraZoom(gameW: number, gameH: number): void {
     const { width: viewW, height: viewH, dpr } = toCssSize(gameW, gameH);
     const minDim = Math.min(viewW, viewH);
@@ -843,7 +841,6 @@ export class ExploreScene extends Phaser.Scene {
       }
     }
 
-    // 確保攝影機不會超出當前地圖總寬高
     const worldW = this.mapData.cols * TILE_SIZE;
     const worldH = this.mapData.rows * TILE_SIZE;
     const minZoomToCoverBounds = Math.max(viewW / worldW, viewH / worldH);
@@ -1547,6 +1544,7 @@ export class ExploreScene extends Phaser.Scene {
 
   private showModernEndingView(): void {
     gameState.setQianlongEndingPhase('returned_modern');
+    ensureSchoolExteriorTexture(this);
 
     const END_W = 576;
     const END_H = 432;
@@ -1565,47 +1563,29 @@ export class ExploreScene extends Phaser.Scene {
     const overlay = this.add.container(0, 0).setDepth(100);
 
     const bg = this.add.graphics();
-    bg.fillStyle(0x182233, 1);
-    bg.fillRect(-600, -400, END_W + 1200, END_H + 800);
-
-    const buildings = [
-      [34, 130, 46, 132],
-      [92, 96, 54, 166],
-      [158, 142, 42, 120],
-      [212, 82, 60, 180],
-      [284, 118, 50, 144],
-      [346, 98, 58, 164],
-      [416, 132, 48, 130],
-      [476, 110, 52, 152]
-    ];
-    for (const [bx, by, bw, bh] of buildings) {
-      bg.fillStyle(0x34496b, 1);
-      bg.fillRect(bx, by, bw, bh);
-      bg.fillStyle(0xffe48a, 0.86);
-      for (let wy = by + 12; wy < by + bh - 14; wy += 18) {
-        bg.fillRect(bx + 8, wy, 8, 8);
-        if (bw > 44) {
-          bg.fillRect(bx + 26, wy, 8, 8);
-        }
-      }
-    }
-
-    bg.fillStyle(0x13334d, 1);
-    bg.fillRect(-600, 262, END_W + 1200, 420);
-    bg.fillStyle(0x5ec2d6, 0.45);
-    for (let i = 0; i < 9; i++) {
-      bg.fillRect(28 + i * 62, 282 + (i % 3) * 16, 38, 4);
-    }
+    bg.fillGradientStyle(0xb9e3fa, 0xd4effc, 0xe8f6fd, 0xe8f6fd, 1);
+    bg.fillRect(-600, -400, END_W + 1200, 650);
+    bg.fillStyle(0xd8d3c8, 1);
+    bg.fillRect(-600, 232, END_W + 1200, 22);
+    bg.fillStyle(0x4a525e, 1);
+    bg.fillRect(-600, 254, END_W + 1200, 420);
 
     bg.fillStyle(0x781912, 0.96);
-    bg.fillRect(46, 16, END_W - 92, 58);
+    bg.fillRect(46, 16, END_W - 92, 52);
     bg.lineStyle(3, 0xf0c246, 1);
-    bg.strokeRect(46, 16, END_W - 92, 58);
+    bg.strokeRect(46, 16, END_W - 92, 52);
     overlay.add(bg);
 
+    if (this.textures.exists(SCHOOL_EXTERIOR_KEY)) {
+      const schoolImg = this.add
+        .image(END_W / 2, 152, SCHOOL_EXTERIOR_KEY)
+        .setDisplaySize(296, 198);
+      overlay.add(schoolImg);
+    }
+
     const t1 = this.add
-      .text(END_W / 2, 45, '已乘御船穿越時空返回現代', {
-        fontSize: '21px',
+      .text(END_W / 2, 42, '已穿越時空旋渦平安返回彩雲聖若瑟小學', {
+        fontSize: '19px',
         color: '#ffe89e',
         fontStyle: 'bold',
         stroke: '#2e0b06',
@@ -1614,8 +1594,8 @@ export class ExploreScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     const student = this.add
-      .sprite(END_W / 2, 224, 'char_student', CHAR_IDLE_FRAME.down)
-      .setScale(2.2 / CHAR_HD_SCALE);
+      .sprite(END_W / 2, 236, 'char_student', CHAR_IDLE_FRAME.down)
+      .setScale(2.1 / CHAR_HD_SCALE);
     student.play('char_student_down');
 
     overlay.add([t1, student]);
