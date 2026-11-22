@@ -1,333 +1,257 @@
 import Phaser from 'phaser';
+import { PALACE_TILES_HD_KEY, TILE_HD_PX } from '../art/OriginalArtLoader';
 import {
-  HD_PROPS_ATLAS_KEY,
-  PALACE_TILES_HD_KEY,
-  TILE_HD_PX
-} from '../art/OriginalArtLoader';
-import { SCHOOL_EXTERIOR_KEY } from '../art/schoolExteriorUri';
-import {
-  DIALOGUES,
-  ENDING_TEXT,
-  EXIT_QUIZZES,
-  JIGSAWS,
-  PASSWORDS,
-  STAGE_NAMES,
-  StageId
-} from '../data/content';
-import {
-  CHAR_HD_SCALE,
-  attachCrispCameraZoom,
-  upgradeSceneTextsToHd
-} from '../gfx/CrispVisuals';
+  SCHOOL_EXTERIOR_KEY,
+  ensureSchoolExteriorTexture
+} from '../art/schoolExteriorUri';
+import { PROMPTS, STAGES, STAGE_NAMES, StageId } from '../data/content';
+import { CHAR_HD_SCALE, toCssSize } from '../gfx/CrispVisuals';
 import {
   CHAR_IDLE_FRAME,
   TILE_SIZE,
   TileIndex
 } from '../gfx/PixelArtGenerator';
-import { STAGE_CHOICE_DELTAS } from '../data/learningEnhancements';
-import { clientToWorldPoint } from '../input/pointerMap';
-import { attachRawPointerBridge } from '../input/rawPointerBridge';
 import {
+  MapPropPlacement,
   MapTrigger,
   StageMapData,
   buildStageMap
 } from '../maps/stageMaps';
-import { CameraZoomPreset, gameState } from '../state/gameState';
+import { ViewZoomPreset, gameState } from '../state/gameState';
 import { HudUI } from '../ui/HudUI';
-import { startExclusiveScene } from './exclusiveScene';
+import { stopOtherScenes } from './exclusiveScene';
 import { launchMinigameScene } from './lazyMinigames';
 
-const COMPACT_HUD_STYLE_ID = 'compact-explore-hud-style';
+const WATER_FRAMES = [TileIndex.WATER_1, TileIndex.WATER_2, TileIndex.WATER_3];
+const COMPACT_HUD_STYLE_ID = 'explore-compact-hud-style';
+
+interface AmbientMote {
+  dot: Phaser.GameObjects.Ellipse;
+  vx: number;
+  vy: number;
+  phase: number;
+}
+
+interface TapWalkTarget {
+  x: number;
+  y: number;
+  pendingTrigger?: MapTrigger;
+  stuckMs: number;
+}
 
 export class ExploreScene extends Phaser.Scene {
   private mapData!: StageMapData;
   private player!: Phaser.GameObjects.Sprite;
-  private playerShadow!: Phaser.GameObjects.Ellipse;
-  private playerRing!: Phaser.GameObjects.Graphics;
-  private playerDir: 'down' | 'left' | 'right' | 'up' = 'down';
-  private charLogicalScale = 1 / CHAR_HD_SCALE;
-
-  private activeTrigger: MapTrigger | null = null;
-  private markerSprites = new Map<string, Phaser.GameObjects.Text>();
-  private npcSprites = new Map<string, Phaser.GameObjects.Sprite>();
-  private royalBoatSprite: Phaser.GameObjects.Image | null = null;
-  private dockFleetBoats: Phaser.GameObjects.Image[] = [];
-
-  private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
-  private wasd!: {
-    up: Phaser.Input.Keyboard.Key;
-    down: Phaser.Input.Keyboard.Key;
-    left: Phaser.Input.Keyboard.Key;
-    right: Phaser.Input.Keyboard.Key;
-    space: Phaser.Input.Keyboard.Key;
-    enter: Phaser.Input.Keyboard.Key;
+  private playerAura!: Phaser.GameObjects.Ellipse;
+  private tapTargetRing!: Phaser.GameObjects.Arc;
+  private walkTarget: TapWalkTarget | null = null;
+  private playerDir: 'down' | 'left' | 'right' | 'up' = 'up';
+  private facingAxis: 'x' | 'y' = 'y';
+  private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
+  private wasd?: {
+    W: Phaser.Input.Keyboard.Key;
+    A: Phaser.Input.Keyboard.Key;
+    S: Phaser.Input.Keyboard.Key;
+    D: Phaser.Input.Keyboard.Key;
+    SPACE: Phaser.Input.Keyboard.Key;
+    ENTER: Phaser.Input.Keyboard.Key;
   };
 
-  private walkTarget: {
-    x: number;
-    y: number;
-    pendingTrigger?: MapTrigger;
-  } | null = null;
-  private walkMarker: Phaser.GameObjects.Arc | null = null;
+  private waterTiles: Phaser.GameObjects.Image[] = [];
+  private waterFrameIdx = 0;
+  private waterTimer = 0;
+  private ambientMotes: AmbientMote[] = [];
 
-  private isEndingView = false;
+  private roofContainer!: Phaser.GameObjects.Container;
+  private canopyPropSprites: Phaser.GameObjects.Image[] = [];
+  private npcBadges: Map<string, Phaser.GameObjects.Image> = new Map();
+  private guideArrow!: Phaser.GameObjects.Image;
+  private worldTargetIndicator!: Phaser.GameObjects.Arc;
+  private royalBoatSprite: Phaser.GameObjects.Image | null = null;
+  private royalBoatIdleTween: Phaser.Tweens.Tween | null = null;
+
+  private activeTrigger: MapTrigger | null = null;
   private isDepartingCutscene = false;
-
-  private userPinchZoomMultiplier = 1;
   private pinchStartDist = 0;
-  private pinchStartMult = 1;
+  private pinchStartCssZoom = 1.5;
+  private customPinchCssZoom: number | null = null;
 
   constructor() {
     super('ExploreScene');
   }
 
-  create(): void {
-    this.ensureCompactHudStyle();
-    this.isEndingView = false;
+  public create(): void {
+    stopOtherScenes(this);
+
+    this.ensureCompactStatusCardStyle();
+
     this.isDepartingCutscene = false;
-    this.activeTrigger = null;
+    this.waterTiles = [];
+    this.canopyPropSprites = [];
+    this.ambientMotes = [];
     this.walkTarget = null;
-    this.markerSprites.clear();
-    this.npcSprites.clear();
-    this.royalBoatSprite = null;
-    this.dockFleetBoats = [];
-    this.userPinchZoomMultiplier = 1;
+    this.waterFrameIdx = 0;
+    this.waterTimer = 0;
+    this.npcBadges.clear();
+    this.activeTrigger = null;
+    this.pinchStartDist = 0;
+    this.customPinchCssZoom = null;
 
     const stageId = gameState.currentStage;
+    const progress = gameState.getStageProgress(stageId);
     this.mapData = buildStageMap(stageId);
-
-    // 確保康熙關「漢族人」正面朝向玩家顯示（不以背面示人）
-    for (const trig of this.mapData.triggers) {
-      if (trig.id === 'han_person') {
-        trig.facing = 'down';
-      }
-    }
-
-    const studentTex = this.textures.get('char_student');
-    const sFrame0 = studentTex?.get(0);
-    this.charLogicalScale =
-      sFrame0 && sFrame0.width >= 120 ? 32 / sFrame0.width : 1;
 
     const worldW = this.mapData.cols * TILE_SIZE;
     const worldH = this.mapData.rows * TILE_SIZE;
     this.cameras.main.setBackgroundColor('#160f0c');
     this.cameras.main.setRoundPixels(true);
-    attachCrispCameraZoom(this.cameras.main);
     this.input.setTopOnly(false);
 
-    // 1. 烘焙雙倍高清靜態底圖（RenderTexture 48px/tile）
-    const useHdTiles = this.textures.exists(PALACE_TILES_HD_KEY);
-    const bakeScale = useHdTiles ? TILE_HD_PX / TILE_SIZE : 1;
-    const tileTexKey = useHdTiles ? PALACE_TILES_HD_KEY : 'palace_tiles';
+    // 1. 採用 48x48 雙倍高清地磚烘焙至 RenderTexture
+    const hasHdTiles = this.textures.exists(PALACE_TILES_HD_KEY);
+    const tileTexKey = hasHdTiles ? PALACE_TILES_HD_KEY : 'palace_tiles';
+    const stepPx = hasHdTiles ? TILE_HD_PX : TILE_SIZE;
+    const tileScale = TILE_SIZE / stepPx;
 
-    const groundBakeRT = this.add
-      .renderTexture(0, 0, worldW * bakeScale, worldH * bakeScale)
+    const groundRt = this.add
+      .renderTexture(0, 0, this.mapData.cols * stepPx, this.mapData.rows * stepPx)
       .setOrigin(0, 0)
-      .setScale(1 / bakeScale)
-      .setDepth(0);
-    groundBakeRT.texture.setFilter(Phaser.Textures.FilterMode.NEAREST);
-    const stampTile = this.make.image({ key: tileTexKey, add: false }).setOrigin(0, 0);
+      .setScale(tileScale)
+      .setDepth(1);
+    const decoRt = this.add
+      .renderTexture(0, 0, this.mapData.cols * stepPx, this.mapData.rows * stepPx)
+      .setOrigin(0, 0)
+      .setScale(tileScale)
+      .setDepth(5);
+    const shadowGraphics = this.add.graphics().setDepth(2);
+    shadowGraphics.fillStyle(0x0c0705, 0.24);
 
-    groundBakeRT.beginDraw();
+    const suppressedDecoCoords = this.collectSuppressedDecoTiles(
+      this.mapData.props || []
+    );
+
+    groundRt.beginDraw();
+    decoRt.beginDraw();
     for (let y = 0; y < this.mapData.rows; y++) {
       for (let x = 0; x < this.mapData.cols; x++) {
         const gIdx = this.mapData.ground[y][x];
-        stampTile.setFrame(gIdx);
-        groundBakeRT.batchDraw(stampTile, x * TILE_SIZE * bakeScale, y * TILE_SIZE * bakeScale);
+        const worldDrawX = x * TILE_SIZE;
+        const worldDrawY = y * TILE_SIZE;
+        const rtDrawX = x * stepPx;
+        const rtDrawY = y * stepPx;
 
-        const dIdx = this.mapData.decor[y][x];
-        if (dIdx >= 0 && !this.mapData.solid[y][x]) {
-          stampTile.setFrame(dIdx);
-          groundBakeRT.batchDraw(stampTile, x * TILE_SIZE * bakeScale, y * TILE_SIZE * bakeScale);
+        if (gIdx === TileIndex.WATER_1) {
+          const gImg = this.add
+            .image(
+              worldDrawX + TILE_SIZE / 2,
+              worldDrawY + TILE_SIZE / 2,
+              tileTexKey,
+              gIdx
+            )
+            .setScale(tileScale)
+            .setDepth(1.2);
+          this.waterTiles.push(gImg);
+        } else {
+          groundRt.batchDrawFrame(tileTexKey, gIdx, rtDrawX, rtDrawY);
+        }
+
+        if (this.mapData.shadow[y][x]) {
+          shadowGraphics.fillRect(worldDrawX, worldDrawY, TILE_SIZE, TILE_SIZE);
+        }
+
+        const dIdx = this.mapData.deco[y][x];
+        if (dIdx !== TileIndex.EMPTY && !suppressedDecoCoords.has(`${x},${y}`)) {
+          decoRt.batchDrawFrame(tileTexKey, dIdx, rtDrawX, rtDrawY);
         }
       }
     }
-    groundBakeRT.endDraw();
+    groundRt.endDraw();
+    decoRt.endDraw();
 
-    const shadowGraphics = this.add.graphics().setDepth(2);
-    shadowGraphics.fillStyle(0x0d0805, 0.22);
+    // 2. 原創高細節大型立體部件層
+    this.renderOriginalMapProps(this.mapData.props || []);
 
-    for (let y = 0; y < this.mapData.rows; y++) {
-      for (let x = 0; x < this.mapData.cols; x++) {
-        const px = x * TILE_SIZE;
-        const py = y * TILE_SIZE;
+    // 2b. 三朝專屬環境氛圍光暈與動態微粒子
+    this.setupDynastyAtmosphere(stageId, worldW, worldH);
 
-        if (
-          this.mapData.solid[y][x] &&
-          y + 1 < this.mapData.rows &&
-          !this.mapData.solid[y + 1][x]
-        ) {
-          shadowGraphics.fillRect(px, py + TILE_SIZE - 2, TILE_SIZE, 9);
-        }
-
-        const dIdx = this.mapData.decor[y][x];
-        if (dIdx >= 0 && this.mapData.solid[y][x]) {
-          this.add
-            .image(px, py, tileTexKey, dIdx)
-            .setOrigin(0, 0)
-            .setDisplaySize(TILE_SIZE, TILE_SIZE)
-            .setDepth(3 + y * 0.08);
-        }
-      }
-    }
-    stampTile.destroy();
-
-    // 2. 立體建築飛簷、獨立分簇樹冠、石獅、銅鶴與軍營原木疊加層
-    const hasHdAtlas = this.textures.exists(HD_PROPS_ATLAS_KEY);
-    if (hasHdAtlas && this.mapData.propStamps) {
-      for (const prop of this.mapData.propStamps) {
-        const px = Math.round(prop.tileX * TILE_SIZE);
-        const py = Math.round(prop.tileY * TILE_SIZE);
-        const sortTileY = prop.sortY ?? prop.tileY;
-        const baseDepth = prop.aboveCanopy ? 22 : 4.2 + sortTileY * 0.1;
-
-        this.add
-          .ellipse(
-            px,
-            py - 2,
-            Math.max(18, Math.round(prop.displayW * 0.68)),
-            Math.max(8, Math.round(prop.displayH * 0.2)),
-            0x0a0604,
-            prop.aboveCanopy ? 0.12 : 0.22
-          )
-          .setDepth(2.1);
-
-        const img = this.add
-          .image(px, py, HD_PROPS_ATLAS_KEY, prop.frame)
-          .setOrigin(0.5, 1)
-          .setDisplaySize(prop.displayW, prop.displayH)
-          .setFlipX(Boolean(prop.flipX))
-          .setDepth(baseDepth);
-
-        if (prop.alpha !== undefined) {
-          img.setAlpha(prop.alpha);
-        }
-      }
-    }
-
-    // 3. 乾隆南巡船隊（1 艘大型雕龍御船 ＋ 6 艘隨扈畫舫伴航）
+    // 3. 乾隆關東岸雕龍御船
+    this.royalBoatSprite = null;
+    this.royalBoatIdleTween = null;
     if (this.mapData.boatPosition) {
-      const bx = Math.round(this.mapData.boatPosition.tileX * TILE_SIZE);
-      const by = Math.round(this.mapData.boatPosition.tileY * TILE_SIZE);
-
-      const escortOffsets: Array<{
-        dx: number;
-        dy: number;
-        scale: number;
-        flipX?: boolean;
-      }> = [
-        { dx: -158, dy: -22, scale: 0.72 },
-        { dx: -92, dy: 28, scale: 0.76 },
-        { dx: -24, dy: -32, scale: 0.7 },
-        { dx: 96, dy: 26, scale: 0.78 },
-        { dx: 164, dy: -20, scale: 0.74 },
-        { dx: 232, dy: 20, scale: 0.7 }
-      ];
-
-      for (let i = 0; i < escortOffsets.length; i++) {
-        const esc = escortOffsets[i];
-        const ex = bx + esc.dx;
-        const ey = by + esc.dy;
-        const escortBoat = this.add
-          .image(ex, ey, 'royal_boat')
-          .setScale(esc.scale)
-          .setFlipX(Boolean(esc.flipX))
-          .setTint(0xf5e6c8)
-          .setDepth(8.1 + (ey / TILE_SIZE) * 0.02);
-
-        this.tweens.add({
-          targets: escortBoat,
-          y: ey - 2.5,
-          duration: 1250 + i * 140,
-          yoyo: true,
-          repeat: -1,
-          ease: 'Sine.easeInOut'
-        });
-
-        this.dockFleetBoats.push(escortBoat);
-      }
-
+      const boatPx = Math.round(this.mapData.boatPosition.tileX * TILE_SIZE);
+      const boatPy = Math.round(this.mapData.boatPosition.tileY * TILE_SIZE);
       this.royalBoatSprite = this.add
-        .image(bx, by, 'royal_boat')
-        .setScale(1.38)
-        .setDepth(8.8);
+        .image(boatPx, boatPy, 'royal_boat')
+        .setScale(1.42)
+        .setDepth(8.6);
       this.royalBoatSprite.setInteractive(
-        new Phaser.Geom.Rectangle(-64, -44, 128, 88),
+        new Phaser.Geom.Rectangle(-70, -48, 140, 96),
         Phaser.Geom.Rectangle.Contains
       );
       this.royalBoatSprite.input!.cursor = 'pointer';
 
       this.royalBoatSprite.on('pointerdown', () => {
         const ui = this.registry.get('ui') as HudUI;
-        if (ui.isModalOpen || this.isDepartingCutscene) return;
-        const exitTrig = this.mapData.triggers.find(
-          (t) => t.id === 'qianlong_exit'
-        );
-        if (!exitTrig) return;
-        if (this.isNearTrigger(exitTrig, 84)) {
-          this.clearWalkTarget();
-          this.handleTriggerAction(exitTrig);
-        } else {
-          this.setTapWalkTarget(
-            exitTrig.tileX * TILE_SIZE + TILE_SIZE / 2,
-            exitTrig.tileY * TILE_SIZE + TILE_SIZE / 2,
-            exitTrig
-          );
+        const exitTrig = this.mapData.triggers.find((t) => t.kind === 'exit');
+        if (!ui.isModalOpen && !this.isDepartingCutscene && exitTrig) {
+          if (this.isNearTrigger(exitTrig, 68)) {
+            this.clearWalkTarget();
+            this.handleTriggerAction(exitTrig);
+          } else {
+            this.setTapWalkTarget(
+              exitTrig.tileX * TILE_SIZE + TILE_SIZE / 2,
+              exitTrig.tileY * TILE_SIZE + TILE_SIZE / 2,
+              exitTrig
+            );
+          }
         }
       });
 
-      this.tweens.add({
+      this.royalBoatIdleTween = this.tweens.add({
         targets: this.royalBoatSprite,
-        y: by - 3.5,
-        duration: 1400,
+        y: this.royalBoatSprite.y + 3,
+        duration: 1150,
         yoyo: true,
         repeat: -1,
         ease: 'Sine.easeInOut'
       });
     }
 
-    // 4. 場景地標名牌
-    for (const sign of this.mapData.signs) {
-      const sx = Math.round(sign.tileX * TILE_SIZE);
-      const sy = Math.round(sign.tileY * TILE_SIZE);
-
-      const labelText = this.add
-        .text(sx, sy, ` ${sign.text} `, {
-          fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
-          fontSize: '12px',
-          color: '#fff6d6',
-          backgroundColor: '#4e1f14e6',
-          padding: { x: 5, y: 2 },
-          fontStyle: 'bold'
-        })
-        .setOrigin(0.5)
-        .setDepth(19);
-
-      labelText.setShadow(0, 1, '#120905', 2, true, true);
-    }
-
-    // 5. NPC 角色與互動觸發點建立
-    for (const trig of this.mapData.triggers) {
+    // 4. 原生全解析度 128x168 角色精靈（康熙關「漢族人」改為正面顯示）
+    this.mapData.triggers.forEach((trig, idx) => {
       const tx = trig.tileX * TILE_SIZE + TILE_SIZE / 2;
       const ty = trig.tileY * TILE_SIZE + TILE_SIZE / 2;
 
-      if (trig.kind === 'npc' && trig.spriteKey) {
-        this.add
-          .ellipse(tx, ty + 3, 20, 8, 0x0a0604, 0.38)
-          .setDepth(9.8 + trig.tileY * 0.1);
+      if (trig.spriteKey) {
+        shadowGraphics.fillStyle(0x090504, 0.34);
+        shadowGraphics.fillEllipse(tx, ty + 2, 24, 8);
 
         const facing = trig.id === 'han_person' ? 'down' : trig.facing || 'down';
         const frame = CHAR_IDLE_FRAME[facing];
+        const baseScale = 1.22 / CHAR_HD_SCALE;
         const npcSprite = this.add
           .sprite(tx, ty + 2, trig.spriteKey, frame)
           .setOrigin(0.5, 0.92)
-          .setScale(this.charLogicalScale)
+          .setScale(baseScale)
           .setDepth(10 + trig.tileY * 0.1);
 
-        const hitW = Math.round(56 / this.charLogicalScale);
-        const hitH = Math.round(64 / this.charLogicalScale);
+        this.tweens.add({
+          targets: npcSprite,
+          scaleY: baseScale * 1.032,
+          scaleX: baseScale * 0.985,
+          duration: 920 + (idx % 5) * 130,
+          yoyo: true,
+          repeat: -1,
+          ease: 'Sine.easeInOut'
+        });
+
         npcSprite.setInteractive(
-          new Phaser.Geom.Rectangle(-hitW / 2, -hitH * 0.85, hitW, hitH),
+          new Phaser.Geom.Rectangle(
+            -28 * CHAR_HD_SCALE,
+            -52 * CHAR_HD_SCALE,
+            56 * CHAR_HD_SCALE,
+            64 * CHAR_HD_SCALE
+          ),
           Phaser.Geom.Rectangle.Contains
         );
         npcSprite.input!.cursor = 'pointer';
@@ -338,396 +262,553 @@ export class ExploreScene extends Phaser.Scene {
           if (this.isNearTrigger(trig, 58)) {
             this.clearWalkTarget();
             const opp = this.getOppositeFacing(this.playerDir);
-            const talkFacing = opp === 'up' ? 'down' : opp;
-            npcSprite.setFrame(CHAR_IDLE_FRAME[talkFacing]);
+            npcSprite.setFrame(CHAR_IDLE_FRAME[opp === 'up' ? 'down' : opp]);
             this.handleTriggerAction(trig);
           } else {
             this.setTapWalkTarget(tx, ty + 14, trig);
           }
         });
-
-        this.npcSprites.set(trig.id, npcSprite);
-
-        this.add
-          .text(tx, ty + 9, trig.label, {
-            fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
-            fontSize: '11px',
-            color: '#fff8e7',
-            backgroundColor: '#261710d9',
-            padding: { x: 4, y: 1 },
-            fontStyle: 'bold'
-          })
-          .setOrigin(0.5, 0)
-          .setDepth(20);
-      } else {
-        const hitZone = this.add
-          .rectangle(tx, ty, 44, 44, 0xffffff, 0.001)
-          .setDepth(18)
-          .setInteractive({ useHandCursor: true });
-
-        hitZone.on('pointerdown', () => {
-          const ui = this.registry.get('ui') as HudUI;
-          if (ui.isModalOpen || this.isDepartingCutscene) return;
-          if (this.isNearTrigger(trig, 58)) {
-            this.clearWalkTarget();
-            this.handleTriggerAction(trig);
-          } else {
-            this.setTapWalkTarget(tx, ty + 10, trig);
-          }
-        });
-
-        const tagColor =
-          trig.kind === 'exit'
-            ? '#ffe98a'
-            : trig.kind === 'minigame'
-              ? '#ffd6a0'
-              : '#e8f4ff';
-
-        this.add
-          .text(tx, ty + 11, trig.label, {
-            fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
-            fontSize: '11px',
-            color: tagColor,
-            backgroundColor: '#261710d9',
-            padding: { x: 4, y: 1 },
-            fontStyle: 'bold'
-          })
-          .setOrigin(0.5, 0)
-          .setDepth(20);
       }
 
-      const isExit = trig.kind === 'exit';
-      const badge = this.add
-        .text(tx, ty - 38, isExit ? '★' : '!', {
-          fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
-          fontSize: '14px',
-          color: isExit ? '#2b1b0e' : '#ffffff',
-          backgroundColor: isExit ? '#f2c138' : '#d9483b',
-          padding: { x: 5, y: 1 },
-          fontStyle: 'bold'
-        })
-        .setOrigin(0.5)
-        .setDepth(25);
+      if (
+        trig.kind === 'npc' ||
+        trig.kind === 'clue' ||
+        trig.kind === 'minigame' ||
+        trig.kind === 'exit'
+      ) {
+        const isHighlight = trig.kind === 'minigame' || trig.kind === 'exit';
+        this.add
+          .text(tx, ty + 6, trig.label, {
+            fontSize: '10.5px',
+            color: isHighlight ? '#ffe898' : '#fff9ec',
+            backgroundColor: isHighlight
+              ? 'rgba(92, 24, 17, 0.88)'
+              : 'rgba(24, 14, 10, 0.84)',
+            padding: { x: 4.5, y: 1.5 },
+            fontStyle: 'bold',
+            stroke: '#160b07',
+            strokeThickness: 2
+          })
+          .setOrigin(0.5, 0)
+          .setDepth(34);
+      }
 
-      this.tweens.add({
-        targets: badge,
-        y: ty - 43,
-        duration: 620,
-        yoyo: true,
-        repeat: -1,
-        ease: 'Sine.easeInOut'
-      });
+      if (
+        trig.kind === 'npc' ||
+        trig.kind === 'clue' ||
+        trig.kind === 'minigame'
+      ) {
+        const badgeOffsetY = trig.spriteKey ? -45 : -32;
+        const badge = this.add
+          .image(tx, ty + badgeOffsetY, 'npc_badge')
+          .setDepth(36);
+        this.tweens.add({
+          targets: badge,
+          y: ty + badgeOffsetY - 4,
+          duration: 620,
+          yoyo: true,
+          repeat: -1
+        });
+        this.npcBadges.set(trig.id, badge);
+      }
+    });
 
-      this.markerSprites.set(trig.id, badge);
-    }
+    this.refreshBadges();
 
-    this.refreshTriggerBadges();
+    // 5. 玩家主角精靈與點地即走目標光圈
+    const startTileX = progress.playerTileX ?? this.mapData.spawnX;
+    const startTileY = progress.playerTileY ?? this.mapData.spawnY;
+    const startPx = startTileX * TILE_SIZE + TILE_SIZE / 2;
+    const startPy = startTileY * TILE_SIZE + TILE_SIZE / 2 + 2;
 
-    // 6. 建立玩家主角與點地行走目標光圈
-    const spawnX =
-      this.mapData.playerSpawn.tileX * TILE_SIZE + TILE_SIZE / 2;
-    const spawnY =
-      this.mapData.playerSpawn.tileY * TILE_SIZE + TILE_SIZE / 2;
+    this.tapTargetRing = this.add
+      .circle(startPx, startPy, 10)
+      .setStrokeStyle(2, 0x6ce8b2, 0.92)
+      .setDepth(4.2)
+      .setVisible(false);
 
-    this.walkMarker = this.add
-      .circle(spawnX, spawnY, 9, 0xffe484, 0.25)
-      .setStrokeStyle(2, 0xffe484, 0.9)
-      .setVisible(false)
-      .setDepth(9.2);
+    this.tweens.add({
+      targets: this.tapTargetRing,
+      scale: { from: 0.75, to: 1.25 },
+      alpha: { from: 0.95, to: 0.35 },
+      duration: 580,
+      repeat: -1
+    });
 
-    this.playerRing = this.add.graphics().setDepth(9.6);
-    this.playerRing.lineStyle(2, 0xf5c84c, 0.9);
-    this.playerRing.strokeEllipse(0, 0, 24, 11);
-    this.playerRing.setPosition(spawnX, spawnY + 2);
-
-    this.playerShadow = this.add
-      .ellipse(spawnX, spawnY + 2, 18, 7, 0x090503, 0.42)
-      .setDepth(9.7);
+    this.playerAura = this.add
+      .ellipse(startPx, startPy, 22, 8, 0xffe48a, 0.24)
+      .setStrokeStyle(1.5, 0xffd54f, 0.82)
+      .setDepth(9.4);
 
     this.player = this.add
-      .sprite(spawnX, spawnY + 2, 'char_student', CHAR_IDLE_FRAME.down)
+      .sprite(startPx, startPy, 'char_student', CHAR_IDLE_FRAME.down)
       .setOrigin(0.5, 0.92)
-      .setScale(this.charLogicalScale)
-      .setDepth(10 + this.mapData.playerSpawn.tileY * 0.1);
+      .setScale(1.22 / CHAR_HD_SCALE)
+      .setDepth(12);
+    this.playerDir = 'down';
 
-    // 點地自動尋路行走（Tap-to-Walk）
+    // 5b. 雙軌操控（點地即走）＋ iPad 雙指捏合自由縮放視野
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      const ui = this.registry.get('ui') as HudUI;
+      if (ui.isModalOpen || this.isDepartingCutscene) return;
+
+      const p1 = this.input.pointer1;
+      const p2 = this.input.pointer2;
+      if (p1.isDown && p2.isDown) {
+        this.clearWalkTarget();
+        this.pinchStartDist = Phaser.Math.Distance.Between(p1.x, p1.y, p2.x, p2.y);
+        const { dpr } = toCssSize(this.scale.width, this.scale.height);
+        this.pinchStartCssZoom = this.cameras.main.zoom / dpr;
+        return;
+      }
+
+      const worldPt = this.cameras.main.getWorldPoint(p.x, p.y);
+      const wx = Phaser.Math.Clamp(worldPt.x, 12, worldW - 12);
+      const wy = Phaser.Math.Clamp(worldPt.y, 16, worldH - 12);
+
+      let tappedTrig: MapTrigger | null = null;
+      let minDist = 30;
+      for (const trig of this.mapData.triggers) {
+        const tx = trig.tileX * TILE_SIZE + TILE_SIZE / 2;
+        const ty = trig.tileY * TILE_SIZE + TILE_SIZE / 2;
+        const d = Phaser.Math.Distance.Between(wx, wy, tx, ty - 8);
+        if (d < minDist) {
+          minDist = d;
+          tappedTrig = trig;
+        }
+      }
+
+      if (tappedTrig) {
+        if (this.isNearTrigger(tappedTrig, 54)) {
+          this.clearWalkTarget();
+          this.handleTriggerAction(tappedTrig);
+        } else {
+          this.setTapWalkTarget(
+            tappedTrig.tileX * TILE_SIZE + TILE_SIZE / 2,
+            tappedTrig.tileY * TILE_SIZE + TILE_SIZE / 2 + 14,
+            tappedTrig
+          );
+        }
+        return;
+      }
+
+      this.setTapWalkTarget(wx, wy);
+    });
+
+    this.input.on('pointermove', () => {
+      const ui = this.registry.get('ui') as HudUI;
+      if (ui.isModalOpen || this.isDepartingCutscene) return;
+      const p1 = this.input.pointer1;
+      const p2 = this.input.pointer2;
+      if (p1.isDown && p2.isDown && this.pinchStartDist > 20) {
+        const dist = Phaser.Math.Distance.Between(p1.x, p1.y, p2.x, p2.y);
+        const ratio = dist / this.pinchStartDist;
+        this.customPinchCssZoom = Phaser.Math.Clamp(
+          this.pinchStartCssZoom * ratio,
+          1.15,
+          2.6
+        );
+        this.applyCameraZoom(this.scale.width, this.scale.height);
+        this.refreshMinimap();
+      }
+    });
+
+    this.input.on('pointerup', () => {
+      if (!this.input.pointer1.isDown || !this.input.pointer2.isDown) {
+        this.pinchStartDist = 0;
+      }
+    });
+
     this.input.on(
-      'pointerdown',
+      'wheel',
       (
-        pointer: Phaser.Input.Pointer,
-        currentlyOver: Phaser.GameObjects.GameObject[]
+        _pointer: Phaser.Input.Pointer,
+        _gameObjects: Phaser.GameObjects.GameObject[],
+        _deltaX: number,
+        deltaY: number
       ) => {
         const ui = this.registry.get('ui') as HudUI;
-        if (
-          ui.isModalOpen ||
-          this.isEndingView ||
-          this.isDepartingCutscene ||
-          currentlyOver.length > 0
-        ) {
-          return;
-        }
-        this.setTapWalkTarget(pointer.worldX, pointer.worldY);
-      }
-    );
-
-    const detachRawPointer = attachRawPointerBridge(
-      this,
-      (clientX: number, clientY: number) => {
-        const ui = this.registry.get('ui') as HudUI;
-        if (ui.isModalOpen || this.isEndingView || this.isDepartingCutscene) {
-          return;
-        }
-        const { worldX, worldY } = clientToWorldPoint(
-          this.game.canvas,
-          this.cameras.main,
-          clientX,
-          clientY
+        if (ui.isModalOpen || this.isDepartingCutscene) return;
+        const { dpr } = toCssSize(this.scale.width, this.scale.height);
+        const curCssZoom = this.cameras.main.zoom / dpr;
+        this.customPinchCssZoom = Phaser.Math.Clamp(
+          curCssZoom + (deltaY < 0 ? 0.2 : -0.2),
+          1.15,
+          2.6
         );
-
-        let nearest: MapTrigger | null = null;
-        let bestDist = Infinity;
-        for (const trig of this.mapData.triggers) {
-          const tx = trig.tileX * TILE_SIZE + TILE_SIZE / 2;
-          const ty = trig.tileY * TILE_SIZE + TILE_SIZE / 2;
-          const distClick = Phaser.Math.Distance.Between(worldX, worldY, tx, ty - 8);
-          if (distClick <= 34 && distClick < bestDist) {
-            bestDist = distClick;
-            nearest = trig;
-          }
-        }
-        if (nearest) {
-          if (this.isNearTrigger(nearest, 58)) {
-            this.clearWalkTarget();
-            const spr = this.npcSprites.get(nearest.id);
-            if (spr) {
-              const opp = this.getOppositeFacing(this.playerDir);
-              spr.setFrame(CHAR_IDLE_FRAME[opp === 'up' ? 'down' : opp]);
-            }
-            this.handleTriggerAction(nearest);
-          } else {
-            this.setTapWalkTarget(
-              nearest.tileX * TILE_SIZE + TILE_SIZE / 2,
-              nearest.tileY * TILE_SIZE + TILE_SIZE / 2 + 10,
-              nearest
-            );
-          }
-          return;
-        }
-        this.setTapWalkTarget(worldX, worldY);
+        this.applyCameraZoom(this.scale.width, this.scale.height);
+        this.refreshMinimap();
       }
     );
 
-    // 7. 攝影機跟隨與 iPad 廣角視野（預設擴大可視地圖面積 4 倍，並支援雙指縮放）
+    // 6. 屋簷飛檐前景遮擋層
+    const treeCanopySuppression = this.collectTreeCanopySuppressedTiles(
+      this.mapData.props || []
+    );
+    this.roofContainer = this.add.container(0, 0).setDepth(28);
+    for (let y = 0; y < this.mapData.rows; y++) {
+      for (let x = 0; x < this.mapData.cols; x++) {
+        const rIdx = this.mapData.roof[y][x];
+        if (
+          rIdx !== TileIndex.EMPTY &&
+          !treeCanopySuppression.has(`${x},${y}`)
+        ) {
+          const rImg = this.add
+            .image(
+              x * TILE_SIZE + TILE_SIZE / 2,
+              y * TILE_SIZE + TILE_SIZE / 2,
+              tileTexKey,
+              rIdx
+            )
+            .setScale(tileScale);
+          this.roofContainer.add(rImg);
+        }
+      }
+    }
+
+    // 7. 地面互動光圈與目標指引金箭嘴
+    this.worldTargetIndicator = this.add
+      .circle(0, 0, 14)
+      .setStrokeStyle(2, 0xffe48a, 0.95)
+      .setDepth(4)
+      .setVisible(false);
+
+    this.guideArrow = this.add
+      .image(0, 0, 'guide_arrow')
+      .setDepth(45)
+      .setVisible(false);
+
+    // 8. iPad 廣角優先攝影機
     const cam = this.cameras.main;
     cam.setBounds(0, 0, worldW, worldH);
-    cam.startFollow(this.player, true, 0.18, 0.18);
-    this.applyResponsiveZoom(this.scale.width, this.scale.height);
-
-    const detachPinch = this.attachTwoFingerPinchZoom();
+    this.applyCameraZoom(this.scale.width, this.scale.height);
+    cam.startFollow(this.player, true, 1, 1);
 
     const onResize = (gameSize: Phaser.Structs.Size) => {
-      if (!this.isEndingView) {
-        this.applyResponsiveZoom(gameSize.width, gameSize.height);
+      if (!this.isDepartingCutscene) {
+        this.applyCameraZoom(gameSize.width, gameSize.height);
       }
     };
     this.scale.on('resize', onResize);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.scale.off('resize', onResize);
-      detachRawPointer();
-      detachPinch();
     });
 
-    // 8. 鍵盤輸入綁定
+    // 9. 鍵盤輸入
     if (this.input.keyboard) {
       this.cursors = this.input.keyboard.createCursorKeys();
       this.wasd = {
-        up: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W),
-        down: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S),
-        left: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A),
-        right: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
-        space: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE),
-        enter: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER)
+        W: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W),
+        A: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A),
+        S: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S),
+        D: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
+        SPACE: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE),
+        ENTER: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER)
       };
 
-      const tryInteract = () => {
+      const keyTrigger = () => {
         const ui = this.registry.get('ui') as HudUI;
-        if (ui.isModalOpen || this.isEndingView || this.isDepartingCutscene) return;
-        if (this.activeTrigger) {
-          this.clearWalkTarget();
-          this.handleTriggerAction(this.activeTrigger);
+        if (!ui.isModalOpen && !this.isDepartingCutscene) {
+          this.interactWithNearest();
         }
       };
-
-      this.wasd.space.on('down', tryInteract);
-      this.wasd.enter.on('down', tryInteract);
+      this.wasd.SPACE.on('down', keyTrigger);
+      this.wasd.ENTER.on('down', keyTrigger);
     }
 
-    upgradeSceneTextsToHd(this);
+    // 10. 註冊右上角選單處理
+    const ui = this.registry.get('ui') as HudUI;
+    const savePos = () => {
+      if (!this.isDepartingCutscene && this.player) {
+        gameState.savePlayerPosition(
+          Math.floor(this.player.x / TILE_SIZE),
+          Math.floor(this.player.y / TILE_SIZE)
+        );
+      }
+    };
+    ui.setNavigationHandlers({
+      onGoTitle: () => {
+        savePos();
+        this.scene.start('TitleScene');
+      },
+      onGoClassSelect:
+        gameState.mode === 'class'
+          ? () => {
+              savePos();
+              this.scene.start('ClassSelectScene');
+            }
+          : undefined,
+      onResetSave: () => {
+        this.scene.start('TitleScene');
+      },
+      onCycleZoom: () => {
+        this.customPinchCssZoom = null;
+        gameState.cycleZoomPreset();
+        this.applyCameraZoom(this.scale.width, this.scale.height);
+        this.refreshMinimap();
+      },
+      onSelectZoomPreset: (preset: ViewZoomPreset) => {
+        this.customPinchCssZoom = null;
+        gameState.zoomPreset = preset;
+        gameState.persist();
+        this.applyCameraZoom(this.scale.width, this.scale.height);
+        this.refreshMinimap();
+      }
+    });
 
     this.updateNearbyTrigger();
     this.renderExplorePanel();
     this.refreshMinimap();
   }
 
+  private setupDynastyAtmosphere(
+    stageId: StageId,
+    worldW: number,
+    worldH: number
+  ): void {
+    if (stageId === 'yongzheng') {
+      const glowGfx = this.add.graphics().setDepth(6.2);
+      glowGfx.fillStyle(0xffcf6e, 0.09);
+      for (const trig of this.mapData.triggers) {
+        const gx = trig.tileX * TILE_SIZE + 12;
+        const gy = trig.tileY * TILE_SIZE;
+        glowGfx.fillCircle(gx, gy, 44);
+      }
+    }
+
+    const count = 20;
+    for (let i = 0; i < count; i++) {
+      const rx = Phaser.Math.Between(24, worldW - 24);
+      const ry = Phaser.Math.Between(24, worldH - 24);
+
+      let color = 0xffdce5;
+      let alpha = 0.72;
+      let w = 4;
+      let h = 3;
+      let vx = -10 - (i % 4) * 3;
+      let vy = 14 + (i % 3) * 4;
+
+      if (stageId === 'yongzheng') {
+        color = 0xffe494;
+        alpha = 0.48;
+        w = 3;
+        h = 3;
+        vx = (i % 2 === 0 ? 1 : -1) * 4;
+        vy = -8 - (i % 3) * 3;
+      } else if (stageId === 'qianlong') {
+        const isEastCanal = rx > worldW * 0.62;
+        color = isEastCanal ? 0xd4ffea : 0xd9b37c;
+        alpha = isEastCanal ? 0.68 : 0.46;
+        w = isEastCanal ? 4 : 3;
+        h = 2.5;
+        vx = isEastCanal ? -8 : 16;
+        vy = isEastCanal ? 10 : -3;
+      }
+
+      const dot = this.add
+        .ellipse(rx, ry, w, h, color, alpha)
+        .setDepth(31);
+      this.ambientMotes.push({
+        dot,
+        vx,
+        vy,
+        phase: i * 0.7
+      });
+    }
+  }
+
   private setTapWalkTarget(
-    worldX: number,
-    worldY: number,
+    x: number,
+    y: number,
     pendingTrigger?: MapTrigger
   ): void {
-    const worldW = this.mapData.cols * TILE_SIZE;
-    const worldH = this.mapData.rows * TILE_SIZE;
-    const tx = Phaser.Math.Clamp(worldX, 16, worldW - 16);
-    const ty = Phaser.Math.Clamp(worldY, 16, worldH - 16);
-    this.walkTarget = { x: tx, y: ty, pendingTrigger };
-    if (this.walkMarker) {
-      this.walkMarker.setPosition(tx, ty);
-      this.walkMarker.setVisible(true);
-    }
+    this.walkTarget = { x, y, pendingTrigger, stuckMs: 0 };
+    this.tapTargetRing.setPosition(x, y).setVisible(true);
   }
 
   private clearWalkTarget(): void {
     this.walkTarget = null;
-    this.walkMarker?.setVisible(false);
+    if (this.tapTargetRing) {
+      this.tapTargetRing.setVisible(false);
+    }
   }
 
-  private ensureCompactHudStyle(): void {
-    if (document.getElementById(COMPACT_HUD_STYLE_ID)) return;
-    const style = document.createElement('style');
+  private playEvidenceCollectedJuice(worldX: number, worldY: number): void {
+    const token = this.add
+      .image(worldX, worldY - 26, 'npc_badge')
+      .setScale(1.25)
+      .setDepth(52);
+
+    const ring = this.add
+      .circle(worldX, worldY - 20, 8)
+      .setStrokeStyle(2.5, 0xffe885, 1)
+      .setDepth(51);
+
+    const label = this.add
+      .text(worldX, worldY - 40, '📜 獲得歷史證據！', {
+        fontSize: '12px',
+        color: '#ffe885',
+        backgroundColor: 'rgba(34, 88, 66, 0.92)',
+        padding: { x: 6, y: 2 },
+        fontStyle: 'bold',
+        stroke: '#0e291e',
+        strokeThickness: 2
+      })
+      .setOrigin(0.5)
+      .setDepth(53);
+
+    this.tweens.add({
+      targets: ring,
+      scale: 2.8,
+      alpha: 0,
+      duration: 520,
+      onComplete: () => ring.destroy()
+    });
+
+    this.tweens.add({
+      targets: token,
+      y: worldY - 68,
+      scale: 0.5,
+      alpha: 0,
+      duration: 720,
+      ease: 'Cubic.easeIn',
+      onComplete: () => token.destroy()
+    });
+
+    this.tweens.add({
+      targets: label,
+      y: worldY - 66,
+      alpha: 0,
+      delay: 320,
+      duration: 680,
+      onComplete: () => label.destroy()
+    });
+  }
+
+  private ensureCompactStatusCardStyle(): void {
+    const existing = document.getElementById(COMPACT_HUD_STYLE_ID);
+    const style = existing || document.createElement('style');
     style.id = COMPACT_HUD_STYLE_ID;
     style.textContent = `
       .hud-status-card {
-        max-width: min(300px, calc(100vw - 160px)) !important;
-        padding: 7px 10px !important;
-        gap: 4px !important;
-        backdrop-filter: blur(3px);
+        max-width: min(352px, calc(100vw - 160px)) !important;
+        padding: 8px 11px !important;
+        gap: 5px !important;
+        backdrop-filter: blur(4px);
       }
-      .hud-status-card .hud-hint-line {
-        font-size: 12px !important;
-        line-height: 1.32 !important;
-      }
-      @media (max-width: 640px) {
+      @media (max-height: 520px), (max-width: 680px) {
         .hud-status-card {
-          max-width: calc(100vw - 104px) !important;
+          max-width: min(296px, calc(100vw - 108px)) !important;
           padding: 6px 9px !important;
         }
-        .hud-status-card .hud-stage-badge {
-          font-size: 12px !important;
-        }
         .hud-status-card .hud-hint-line {
-          font-size: 11px !important;
+          font-size: 12px !important;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
         }
       }
     `;
-    document.head.appendChild(style);
-  }
-
-  private computeBaseZoomForPreset(
-    w: number,
-    h: number,
-    preset: CameraZoomPreset
-  ): number {
-    const minDim = Math.min(w, h);
-    if (preset === 'wide') {
-      if (minDim >= 900) return 1.5;
-      if (minDim >= 680) return 1.25;
-      return 1.25;
+    if (!existing) {
+      document.head.appendChild(style);
     }
-    if (preset === 'close') {
-      if (minDim >= 900) return 2.5;
-      if (minDim >= 680) return 2.25;
-      return 2.0;
+  }
+
+  private collectSuppressedDecoTiles(props: MapPropPlacement[]): Set<string> {
+    const set = new Set<string>();
+    if (!this.textures.exists('hd_art_props')) return set;
+    const tex = this.textures.get('hd_art_props');
+
+    for (const p of props) {
+      if (!tex.has(p.frame)) continue;
+      if (p.frame.startsWith('stone_lantern_')) {
+        set.add(`${Math.round(p.tileX)},${Math.round(p.tileY + 0.15)}`);
+      } else if (p.frame.startsWith('camp_tent_')) {
+        const baseX = Math.floor(p.tileX);
+        const baseY = Math.round(p.tileY + 0.2);
+        set.add(`${baseX},${baseY}`);
+        set.add(`${baseX + 1},${baseY}`);
+      } else if (p.frame.startsWith('tree_')) {
+        set.add(`${Math.round(p.tileX)},${Math.round(p.tileY + 0.55)}`);
+      }
     }
-    if (minDim >= 900) return 1.75;
-    if (minDim >= 680) return 1.5;
-    return 1.5;
+    return set;
   }
 
-  private applyResponsiveZoom(w: number, h: number): void {
-    const base = this.computeBaseZoomForPreset(w, h, gameState.cameraZoomPreset);
-    const raw = Phaser.Math.Clamp(base * this.userPinchZoomMultiplier, 1.0, 3.25);
-    const snapped = Math.round(raw * 4) / 4;
-    this.cameras.main.setZoom(snapped);
+  private collectTreeCanopySuppressedTiles(
+    props: MapPropPlacement[]
+  ): Set<string> {
+    const set = new Set<string>();
+    if (!this.textures.exists('hd_art_props')) return set;
+    const tex = this.textures.get('hd_art_props');
+
+    for (const p of props) {
+      if (!tex.has(p.frame)) continue;
+      if (p.frame.startsWith('tree_')) {
+        const tx = Math.round(p.tileX);
+        const trunkY = Math.round(p.tileY + 0.55);
+        set.add(`${tx},${trunkY - 1}`);
+      }
+    }
+    return set;
   }
 
-  private attachTwoFingerPinchZoom(): () => void {
-    const host = this.game.canvas;
-    if (!host) return () => {};
+  private renderOriginalMapProps(props: MapPropPlacement[]): void {
+    if (!this.textures.exists('hd_art_props')) return;
+    const propTex = this.textures.get('hd_art_props');
 
-    const touchDist = (t1: Touch, t2: Touch): number => {
-      const dx = t1.clientX - t2.clientX;
-      const dy = t1.clientY - t2.clientY;
-      return Math.sqrt(dx * dx + dy * dy);
-    };
+    for (const prop of props) {
+      if (!propTex.has(prop.frame)) continue;
 
-    const onTouchStart = (ev: TouchEvent) => {
-      if (ev.touches.length === 2) {
-        this.pinchStartDist = touchDist(ev.touches[0], ev.touches[1]);
-        this.pinchStartMult = this.userPinchZoomMultiplier;
-        this.clearWalkTarget();
-      }
-    };
-
-    const onTouchMove = (ev: TouchEvent) => {
-      if (ev.touches.length === 2 && this.pinchStartDist > 24) {
-        const curDist = touchDist(ev.touches[0], ev.touches[1]);
-        const ratio = curDist / this.pinchStartDist;
-        this.userPinchZoomMultiplier = Phaser.Math.Clamp(
-          this.pinchStartMult * ratio,
-          0.7,
-          1.85
-        );
-        this.applyResponsiveZoom(this.scale.width, this.scale.height);
-      }
-    };
-
-    const onWheel = (ev: WheelEvent) => {
-      const ui = this.registry.get('ui') as HudUI;
-      if (ui.isModalOpen || this.isEndingView) return;
-      const delta = ev.deltaY < 0 ? 0.12 : -0.12;
-      this.userPinchZoomMultiplier = Phaser.Math.Clamp(
-        this.userPinchZoomMultiplier + delta,
-        0.7,
-        1.85
+      const px = Math.round(
+        prop.tileX * TILE_SIZE + TILE_SIZE / 2 + (prop.offsetX ?? 0)
       );
-      this.applyResponsiveZoom(this.scale.width, this.scale.height);
-    };
+      const py = Math.round(
+        prop.tileY * TILE_SIZE + TILE_SIZE / 2 + (prop.offsetY ?? 0)
+      );
 
-    host.addEventListener('touchstart', onTouchStart, { passive: true });
-    host.addEventListener('touchmove', onTouchMove, { passive: true });
-    host.addEventListener('wheel', onWheel, { passive: true });
+      const img = this.add.image(px, py, 'hd_art_props', prop.frame);
+      if (prop.flipX) img.setFlipX(true);
+      if (prop.scale !== undefined) img.setScale(prop.scale);
+      if (prop.alpha !== undefined) img.setAlpha(prop.alpha);
 
-    return () => {
-      host.removeEventListener('touchstart', onTouchStart);
-      host.removeEventListener('touchmove', onTouchMove);
-      host.removeEventListener('wheel', onWheel);
-    };
-  }
+      if (prop.layer === 'ground_decor') {
+        img.setOrigin(0.5, 0.5).setDepth(3.4 + prop.tileY * 0.01);
+      } else if (prop.layer === 'building') {
+        const isBoat = prop.frame.startsWith('pier_boat_');
+        img
+          .setOrigin(0.5, isBoat ? 0.62 : 0.88)
+          .setDepth(isBoat ? 7.8 + prop.tileY * 0.05 : 10 + prop.tileY * 0.1);
 
-  private getCurrentZoneName(): string {
-    const tx = this.player.x / TILE_SIZE;
-    const ty = this.player.y / TILE_SIZE;
-    for (const z of this.mapData.zones) {
-      if (tx >= z.x1 && tx <= z.x2 && ty >= z.y1 && ty <= z.y2) {
-        return z.name;
+        if (isBoat) {
+          this.tweens.add({
+            targets: img,
+            y: py + 2,
+            duration: 1280 + ((px * 13) % 320),
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+          });
+        }
+      } else {
+        const isTree = prop.frame.startsWith('tree_');
+        img
+          .setOrigin(0.5, isTree ? 0.62 : 0.55)
+          .setDepth(29 + prop.tileY * 0.02);
+        this.canopyPropSprites.push(img);
       }
     }
-    return STAGE_NAMES[gameState.currentStage];
-  }
-
-  private isNearTrigger(trig: MapTrigger, maxDist = 42): boolean {
-    const tx = trig.tileX * TILE_SIZE + TILE_SIZE / 2;
-    const ty = trig.tileY * TILE_SIZE + TILE_SIZE / 2;
-    return Phaser.Math.Distance.Between(this.player.x, this.player.y, tx, ty) <= maxDist;
   }
 
   private getOppositeFacing(
     dir: 'down' | 'left' | 'right' | 'up'
   ): 'down' | 'left' | 'right' | 'up' {
     switch (dir) {
-      case 'down':
-        return 'up';
       case 'up':
         return 'down';
+      case 'down':
+        return 'up';
       case 'left':
         return 'right';
       case 'right':
@@ -735,70 +816,47 @@ export class ExploreScene extends Phaser.Scene {
     }
   }
 
-  private isTriggerCompleted(trig: MapTrigger): boolean {
-    const stageId = gameState.currentStage;
-    if (trig.kind === 'npc' || trig.kind === 'clue') {
-      return gameState.hasVisited(stageId, trig.id);
-    }
-    if (trig.kind === 'minigame') {
-      if (trig.id === 'archery_minigame') return gameState.kangxiArcheryDone;
-      if (trig.id === 'talent_minigame') return gameState.kangxiTalentDone;
-      if (trig.id === 'whack_minigame') return gameState.yongzhengWhackDone;
-      if (trig.id === 'southern_tour_minigame') {
-        return gameState.qianlongTourDone;
+  private applyCameraZoom(gameW: number, gameH: number): void {
+    const { width: viewW, height: viewH, dpr } = toCssSize(gameW, gameH);
+    const minDim = Math.min(viewW, viewH);
+    const isTabletOrDesktop = minDim >= 580;
+
+    let cssZoom: number;
+    if (this.customPinchCssZoom !== null) {
+      cssZoom = this.customPinchCssZoom;
+    } else {
+      switch (gameState.zoomPreset) {
+        case 'panoramic':
+          cssZoom = isTabletOrDesktop ? 1.25 : 1.0;
+          break;
+        case 'wide':
+          cssZoom = isTabletOrDesktop ? 1.5 : 1.25;
+          break;
+        case 'standard':
+          cssZoom = isTabletOrDesktop ? 2.0 : 1.5;
+          break;
+        case 'close':
+          cssZoom = isTabletOrDesktop ? 2.5 : 2.0;
+          break;
       }
     }
-    if (trig.kind === 'exit') {
-      return gameState.canExitCurrentStage();
-    }
-    return false;
+
+    const worldW = this.mapData.cols * TILE_SIZE;
+    const worldH = this.mapData.rows * TILE_SIZE;
+    const minZoomToCoverBounds = Math.max(viewW / worldW, viewH / worldH);
+    const finalCssZoom = Math.max(minZoomToCoverBounds, cssZoom);
+
+    this.cameras.main.setZoom(finalCssZoom * dpr);
   }
 
-  private refreshTriggerBadges(): void {
-    for (const trig of this.mapData.triggers) {
-      const badge = this.markerSprites.get(trig.id);
-      if (!badge) continue;
-
-      if (trig.kind === 'exit') {
-        const ready = gameState.canExitCurrentStage();
-        badge.setText(ready ? '★' : '🔒');
-        badge.setStyle({
-          backgroundColor: ready ? '#2fb36d' : '#6e655f',
-          color: '#ffffff'
-        });
-      } else {
-        const done = this.isTriggerCompleted(trig);
-        badge.setText(done ? '✓' : '!');
-        badge.setStyle({
-          backgroundColor: done ? '#2fb36d' : '#d9483b',
-          color: '#ffffff'
-        });
-      }
-    }
-  }
-
-  private renderExplorePanel(): void {
+  private renderExplorePanel(overrideHint?: string): void {
     const ui = this.registry.get('ui') as HudUI;
-    const stageId = gameState.currentStage;
-    const hintText = this.computeCurrentStageHint();
-
-    ui.renderExploreHud({
-      stageName: STAGE_NAMES[stageId],
+    const hint = overrideHint ?? this.computeCurrentStageHint();
+    ui.renderExploreHUD({
       zoneName: this.getCurrentZoneName(),
-      hintText,
+      hintText: hint,
       nearbyLabel: this.activeTrigger?.label || null,
-      onInteract: () => this.interactWithNearest(),
-      onCycleZoom: () => {
-        this.userPinchZoomMultiplier = 1;
-        this.applyResponsiveZoom(this.scale.width, this.scale.height);
-      },
-      onZoomPresetChanged: () => {
-        this.userPinchZoomMultiplier = 1;
-        this.applyResponsiveZoom(this.scale.width, this.scale.height);
-      },
-      onReturnTitleRequested: () => {
-        startExclusiveScene(this, 'TitleScene');
-      }
+      onInteract: () => this.interactWithNearest()
     });
     this.refreshMinimap();
   }
@@ -817,6 +875,7 @@ export class ExploreScene extends Phaser.Scene {
     };
 
     ui.updateExploreMinimap({
+      stageKey: gameState.currentStage,
       cols: this.mapData.cols,
       rows: this.mapData.rows,
       solid: this.mapData.solid,
@@ -833,196 +892,236 @@ export class ExploreScene extends Phaser.Scene {
   }
 
   private computeCurrentStageHint(): string {
-    const stage = gameState.currentStage;
-    if (stage === 'kangxi') {
-      const talkDone =
-        gameState.hasVisited('kangxi', 'kangxi_emperor') &&
-        gameState.hasVisited('kangxi', 'manchu_person') &&
-        gameState.hasVisited('kangxi', 'han_person');
+    const stageId = gameState.currentStage;
+    const stageCfg = STAGES[stageId];
+    const prog = gameState.getStageProgress(stageId);
 
-      if (!talkDone) {
-        return '探索中軸宮殿、東配殿與西校場：與康熙皇帝、滿族人、漢族人對話（可點地面直接行走）';
-      }
-      if (!gameState.kangxiArcheryDone || !gameState.kangxiTalentDone) {
-        return '前往西校場完成「射箭平三藩」，並於東配殿完成「任用人才」小遊戲';
-      }
-      if (!gameState.jigsawSolved.kangxi) {
-        return '線索已齊備！前往北端「御書房通道」拼合歷史知識拼圖過關';
-      }
-      return '前往北端「御書房通道」回答出關題目或輸入密碼過關';
+    if (
+      gameState.mode === 'sequential' &&
+      stageId === 'qianlong' &&
+      (prog.qianlongEndingPhase === 'find_qianlong' ||
+        prog.qianlongEndingPhase === 'teacher_password')
+    ) {
+      return PROMPTS.FIND_QIANLONG_AGAIN;
     }
-
-    if (stage === 'yongzheng') {
-      const talkDone =
-        gameState.hasVisited('yongzheng', 'yongzheng_emperor') &&
-        gameState.hasVisited('yongzheng', 'corrupt_a') &&
-        gameState.hasVisited('yongzheng', 'corrupt_b') &&
-        gameState.hasVisited('yongzheng', 'treasury_clue');
-
-      if (!talkDone) {
-        return '探索正殿、西庫房與東長廊：與雍正、貪官甲、貪官乙對話並調查國庫銀箱';
-      }
-      if (!gameState.yongzhengWhackDone) {
-        return '前往正殿右側查辦案桌完成「打擊貪官」小遊戲';
-      }
-      if (!gameState.jigsawSolved.yongzheng) {
-        return '線索已齊備！前往北端「殿門出口」拼合歷史知識拼圖過關';
-      }
-      return '前往北端「殿門出口」回答出關題目或輸入密碼過關';
+    if (
+      gameState.mode === 'sequential' &&
+      stageId === 'qianlong' &&
+      prog.qianlongEndingPhase === 'ask_qianlong'
+    ) {
+      return PROMPTS.ASK_QIANLONG_HUD;
     }
-
-    const talkDone =
-      gameState.hasVisited('qianlong', 'qianlong_emperor') &&
-      gameState.hasVisited('qianlong', 'qing_soldier') &&
-      gameState.hasVisited('qianlong', 'heshen') &&
-      gameState.hasVisited('qianlong', 'farmer');
-
-    if (!talkDone) {
-      return '探索行宮、軍營、江南水鄉與農田：與乾隆、清兵、和珅、農夫對話';
+    if (prog.quizPassed && !prog.passwordPassed) {
+      return PROMPTS.QUIZ_PASSED;
     }
-    if (!gameState.qianlongTourDone) {
-      return '前往江南石拱橋東側「南巡水道起點」完成「六下江南」划船小遊戲';
+    if (gameState.isAllStageRequirementsReady(stageId)) {
+      return stageCfg.evidenceReadyMessage;
     }
-    if (!gameState.jigsawSolved.qianlong) {
-      return '前往東南「大運河碼頭」登上雕龍御船完成拼圖返回現代！';
+    if (
+      gameState.areRequiredNpcsVisited(stageId) &&
+      !gameState.areRequiredMinigamesDone(stageId)
+    ) {
+      return '人物證據已收齊！請跟著箭嘴完成本關小遊戲挑戰，再前往出口。';
     }
-    return '前往東南「大運河碼頭」登上雕龍御船回答題目，乘船穿越回現代！';
+    return '點按地面／人物可自動走過去，右上「🔍 視野」或雙指捏合可自由調整畫面遠近。';
   }
 
-  private interactWithNearest(): void {
-    const ui = this.registry.get('ui') as HudUI;
-    if (ui.isModalOpen || this.isEndingView || this.isDepartingCutscene) return;
-    if (this.activeTrigger) {
-      const npc = this.npcSprites.get(this.activeTrigger.id);
-      if (npc) {
-        const opp = this.getOppositeFacing(this.playerDir);
-        npc.setFrame(CHAR_IDLE_FRAME[opp === 'up' ? 'down' : opp]);
+  private refreshBadges(): void {
+    const prog = gameState.getStageProgress();
+    for (const trig of this.mapData.triggers) {
+      const badge = this.npcBadges.get(trig.id);
+      if (!badge) continue;
+
+      if (trig.kind === 'npc' || trig.kind === 'clue') {
+        const visited = prog.visitedNpcs.has(trig.id);
+        if (
+          gameState.mode === 'sequential' &&
+          trig.id === 'qianlong_emperor' &&
+          (prog.qianlongEndingPhase === 'find_qianlong' ||
+            prog.qianlongEndingPhase === 'teacher_password' ||
+            prog.qianlongEndingPhase === 'ask_qianlong')
+        ) {
+          badge.setVisible(true);
+        } else {
+          badge.setVisible(!visited);
+        }
+      } else if (trig.kind === 'minigame' && trig.minigameId) {
+        badge.setVisible(!prog.completedMinigames.has(trig.minigameId));
       }
-      this.handleTriggerAction(this.activeTrigger);
-    } else {
-      ui.showDialogue('探索提示', [
-        '請先走近帶有「!」或「★」標記的人物、物件或出口（亦可直接點按地面自動走過去）。'
-      ]);
     }
   }
 
-  update(_time: number, delta: number): void {
-    if (this.isEndingView || this.isDepartingCutscene) return;
+  public update(time: number, delta: number): void {
+    const dt = delta / 1000;
+    const worldW = this.mapData.cols * TILE_SIZE;
+    const worldH = this.mapData.rows * TILE_SIZE;
+
+    this.waterTimer += delta;
+    if (this.waterTimer >= 420) {
+      this.waterTimer = 0;
+      this.waterFrameIdx = (this.waterFrameIdx + 1) % WATER_FRAMES.length;
+      const frame = WATER_FRAMES[this.waterFrameIdx];
+      for (const wt of this.waterTiles) {
+        wt.setFrame(frame);
+      }
+    }
+
+    for (const m of this.ambientMotes) {
+      m.dot.x += (m.vx + Math.sin(time * 0.002 + m.phase) * 5) * dt;
+      m.dot.y += m.vy * dt;
+      if (m.dot.x < 8) m.dot.x = worldW - 12;
+      else if (m.dot.x > worldW - 8) m.dot.x = 12;
+      if (m.dot.y < 8) m.dot.y = worldH - 12;
+      else if (m.dot.y > worldH - 8) m.dot.y = 12;
+    }
 
     const ui = this.registry.get('ui') as HudUI;
-    if (ui.isModalOpen) {
-      this.stopPlayerAnim();
+    if (ui.isModalOpen || this.isDepartingCutscene) {
+      this.player.anims.stop();
+      this.player.setFrame(CHAR_IDLE_FRAME[this.playerDir]);
       return;
     }
 
-    let vx = 0;
-    let vy = 0;
+    let vx = ui.joyVector.x;
+    let vy = ui.joyVector.y;
 
-    if (this.cursors) {
-      if (this.cursors.left.isDown || this.wasd.left.isDown) vx -= 1;
-      if (this.cursors.right.isDown || this.wasd.right.isDown) vx += 1;
-      if (this.cursors.up.isDown || this.wasd.up.isDown) vy -= 1;
-      if (this.cursors.down.isDown || this.wasd.down.isDown) vy += 1;
-    }
+    if (this.cursors?.left.isDown || this.wasd?.A.isDown) vx = -1;
+    else if (this.cursors?.right.isDown || this.wasd?.D.isDown) vx = 1;
 
-    if (ui.dirState.left) vx -= 1;
-    if (ui.dirState.right) vx += 1;
-    if (ui.dirState.up) vy -= 1;
-    if (ui.dirState.down) vy += 1;
+    if (this.cursors?.up.isDown || this.wasd?.W.isDown) vy = -1;
+    else if (this.cursors?.down.isDown || this.wasd?.S.isDown) vy = 1;
 
-    if (vx !== 0 || vy !== 0) {
-      this.clearWalkTarget();
-    } else if (this.walkTarget) {
-      const dx = this.walkTarget.x - this.player.x;
-      const dy = this.walkTarget.y - this.player.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-
-      if (
-        this.walkTarget.pendingTrigger &&
-        this.isNearTrigger(this.walkTarget.pendingTrigger, 44)
-      ) {
-        const trig = this.walkTarget.pendingTrigger;
+    if (Math.hypot(vx, vy) > 0.05) {
+      if (this.walkTarget) {
         this.clearWalkTarget();
-        this.stopPlayerAnim();
-        const spr = this.npcSprites.get(trig.id);
-        if (spr) {
-          const opp = this.getOppositeFacing(this.playerDir);
-          spr.setFrame(CHAR_IDLE_FRAME[opp === 'up' ? 'down' : opp]);
-        }
-        this.handleTriggerAction(trig);
+      }
+    } else if (this.walkTarget) {
+      const pending = this.walkTarget.pendingTrigger;
+      if (pending && this.isNearTrigger(pending, 44)) {
+        this.clearWalkTarget();
+        this.handleTriggerAction(pending);
         return;
       }
 
-      if (dist <= 6) {
+      const dxT = this.walkTarget.x - this.player.x;
+      const dyT = this.walkTarget.y - this.player.y;
+      const distT = Math.hypot(dxT, dyT);
+      if (distT <= 8) {
+        const arrivedTrig = this.walkTarget.pendingTrigger;
         this.clearWalkTarget();
+        if (arrivedTrig && this.isNearTrigger(arrivedTrig, 56)) {
+          this.handleTriggerAction(arrivedTrig);
+          return;
+        }
       } else {
-        vx = dx / dist;
-        vy = dy / dist;
+        vx = dxT / distT;
+        vy = dyT / distT;
       }
     }
 
-    if (vx !== 0 || vy !== 0) {
-      const len = Math.sqrt(vx * vx + vy * vy);
-      vx /= len;
-      vy /= len;
+    const mag = Math.hypot(vx, vy);
+    if (mag > 0.05) {
+      const prevX = this.player.x;
+      const prevY = this.player.y;
 
-      const speed = 152;
-      const stepX = vx * speed * (delta / 1000);
-      const stepY = vy * speed * (delta / 1000);
+      const clampedMag = Math.min(1, mag);
+      const speed = 118 * clampedMag * dt;
+      const dx = (vx / mag) * speed;
+      const dy = (vy / mag) * speed;
 
-      const movedX = this.tryMovePlayer(stepX, 0);
-      const movedY = this.tryMovePlayer(0, stepY);
+      this.tryMovePlayer(dx, 0);
+      this.tryMovePlayer(0, dy);
 
-      if (!movedX && !movedY && this.walkTarget) {
-        this.clearWalkTarget();
+      if (this.walkTarget) {
+        const actualMoved = Math.hypot(
+          this.player.x - prevX,
+          this.player.y - prevY
+        );
+        if (actualMoved < 0.25) {
+          this.walkTarget.stuckMs += delta;
+          if (this.walkTarget.stuckMs > 320) {
+            this.clearWalkTarget();
+          }
+        } else {
+          this.walkTarget.stuckMs = 0;
+        }
       }
 
-      if (Math.abs(vx) >= Math.abs(vy)) {
+      const ax = Math.abs(vx);
+      const ay = Math.abs(vy);
+      if (this.facingAxis === 'x') {
+        if (ay > ax * 1.35) this.facingAxis = 'y';
+      } else {
+        if (ax > ay * 1.35) this.facingAxis = 'x';
+      }
+      if (this.facingAxis === 'x' && ax > 0.08) {
         this.playerDir = vx < 0 ? 'left' : 'right';
-      } else {
+      } else if (ay > 0.08) {
         this.playerDir = vy < 0 ? 'up' : 'down';
+      } else if (ax > 0.08) {
+        this.playerDir = vx < 0 ? 'left' : 'right';
       }
-
-      const animKey = `char_student_${this.playerDir}`;
-      if (this.player.anims.currentAnim?.key !== animKey) {
-        this.player.play(animKey, true);
-      }
+      this.player.setFlipX(false);
+      this.player.play(`char_student_${this.playerDir}`, true);
     } else {
-      this.stopPlayerAnim();
+      this.player.anims.stop();
+      this.player.setFlipX(false);
+      this.player.setFrame(CHAR_IDLE_FRAME[this.playerDir]);
     }
 
-    this.playerShadow.setPosition(this.player.x, this.player.y);
-    this.playerRing.setPosition(this.player.x, this.player.y);
     this.player.setDepth(10 + (this.player.y / TILE_SIZE) * 0.1);
+    this.playerAura.setPosition(this.player.x, this.player.y);
+
+    const ptx = Math.floor(this.player.x / TILE_SIZE);
+    const pty = Math.floor((this.player.y - 10) / TILE_SIZE);
+    const underRoof =
+      pty >= 0 &&
+      pty < this.mapData.rows &&
+      ptx >= 0 &&
+      ptx < this.mapData.cols &&
+      this.mapData.roof[pty][ptx] !== TileIndex.EMPTY;
+    this.roofContainer.setAlpha(underRoof ? 0.42 : 1);
+
+    const playerBodyX = this.player.x;
+    const playerBodyY = this.player.y - 14;
+    for (const canopyImg of this.canopyPropSprites) {
+      const bounds = canopyImg.getBounds();
+      const inside =
+        playerBodyX >= bounds.left + 6 &&
+        playerBodyX <= bounds.right - 6 &&
+        playerBodyY >= bounds.top + 6 &&
+        playerBodyY <= bounds.bottom - 4;
+      canopyImg.setAlpha(inside ? 0.42 : 1);
+    }
 
     this.updateNearbyTrigger();
+    this.updateGuideArrow(time);
 
-    ui.updateExploreStatus(
-      this.computeCurrentStageHint(),
+    ui.updateExploreDynamicStatus(
       this.getCurrentZoneName(),
       this.activeTrigger?.label || null
     );
     this.refreshMinimap();
   }
 
-  private tryMovePlayer(dx: number, dy: number): boolean {
-    const nextX = this.player.x + dx;
-    const nextY = this.player.y + dy;
+  private tryMovePlayer(dx: number, dy: number): void {
+    const nx = this.player.x + dx;
+    const ny = this.player.y + dy;
 
-    const halfW = 7;
-    const topOff = 8;
-    const botOff = 2;
+    const halfW = 6.5;
+    const topOff = -7;
+    const botOff = 1.5;
 
     const corners = [
-      { x: nextX - halfW, y: nextY - topOff },
-      { x: nextX + halfW, y: nextY - topOff },
-      { x: nextX - halfW, y: nextY + botOff },
-      { x: nextX + halfW, y: nextY + botOff }
+      [nx - halfW, ny + topOff],
+      [nx + halfW, ny + topOff],
+      [nx - halfW, ny + botOff],
+      [nx + halfW, ny + botOff]
     ];
 
-    for (const c of corners) {
-      const tx = Math.floor(c.x / TILE_SIZE);
-      const ty = Math.floor(c.y / TILE_SIZE);
+    for (const [cx, cy] of corners) {
+      const tx = Math.floor(cx / TILE_SIZE);
+      const ty = Math.floor(cy / TILE_SIZE);
       if (
         tx < 0 ||
         ty < 0 ||
@@ -1030,25 +1129,37 @@ export class ExploreScene extends Phaser.Scene {
         ty >= this.mapData.rows ||
         this.mapData.solid[ty][tx]
       ) {
-        return false;
+        return;
       }
     }
 
-    this.player.x = nextX;
-    this.player.y = nextY;
-    return true;
+    this.player.x = nx;
+    this.player.y = ny;
   }
 
-  private stopPlayerAnim(): void {
-    if (this.player?.anims.isPlaying) {
-      this.player.anims.stop();
+  private getCurrentZoneName(): string {
+    const tx = Math.floor(this.player.x / TILE_SIZE);
+    const ty = Math.floor(this.player.y / TILE_SIZE);
+    for (const z of this.mapData.zones) {
+      if (tx >= z.x1 && tx <= z.x2 && ty >= z.y1 && ty <= z.y2) {
+        return z.name;
+      }
     }
-    this.player?.setFrame(CHAR_IDLE_FRAME[this.playerDir]);
+    return STAGE_NAMES[gameState.currentStage];
+  }
+
+  private isNearTrigger(trig: MapTrigger, maxDist = 42): boolean {
+    const tx = trig.tileX * TILE_SIZE + TILE_SIZE / 2;
+    const ty = trig.tileY * TILE_SIZE + TILE_SIZE / 2;
+    return (
+      Phaser.Math.Distance.Between(this.player.x, this.player.y, tx, ty) <=
+      maxDist
+    );
   }
 
   private updateNearbyTrigger(): void {
-    let closest: MapTrigger | null = null;
-    let minDist = 40;
+    let best: MapTrigger | null = null;
+    let bestDist = 42;
 
     for (const trig of this.mapData.triggers) {
       const tx = trig.tileX * TILE_SIZE + TILE_SIZE / 2;
@@ -1059,304 +1170,447 @@ export class ExploreScene extends Phaser.Scene {
         tx,
         ty
       );
-      if (d <= minDist) {
-        minDist = d;
-        closest = trig;
+      if (d < bestDist) {
+        bestDist = d;
+        best = trig;
       }
     }
 
-    this.activeTrigger = closest;
+    this.activeTrigger = best;
+    if (best) {
+      this.worldTargetIndicator
+        .setPosition(
+          best.tileX * TILE_SIZE + TILE_SIZE / 2,
+          best.tileY * TILE_SIZE + TILE_SIZE / 2 + 2
+        )
+        .setVisible(true);
+    } else {
+      this.worldTargetIndicator.setVisible(false);
+    }
   }
 
-  private handleTriggerAction(trig: MapTrigger): void {
-    const ui = this.registry.get('ui') as HudUI;
+  private getArrowTargetTrigger(): MapTrigger | null {
     const stageId = gameState.currentStage;
+    const prog = gameState.getStageProgress(stageId);
 
-    if (trig.kind === 'npc' || trig.kind === 'clue') {
-      const lines = DIALOGUES[trig.id];
-      if (!lines) return;
+    if (
+      gameState.mode === 'sequential' &&
+      stageId === 'qianlong' &&
+      (prog.qianlongEndingPhase === 'find_qianlong' ||
+        prog.qianlongEndingPhase === 'teacher_password' ||
+        prog.qianlongEndingPhase === 'ask_qianlong')
+    ) {
+      return (
+        this.mapData.triggers.find((t) => t.id === 'qianlong_emperor') || null
+      );
+    }
 
-      const firstVisit = !gameState.hasVisited(stageId, trig.id);
-      gameState.markVisited(stageId, trig.id);
-      if (firstVisit && STAGE_CHOICE_DELTAS[trig.id]) {
-        gameState.applyMeterDelta(STAGE_CHOICE_DELTAS[trig.id], `${trig.label}：${lines[0]}`);
-      } else {
-        gameState.recordClue(stageId, `${trig.label}：${lines[0]}`);
-      }
+    if (gameState.isAllStageRequirementsReady(stageId)) {
+      return this.mapData.triggers.find((t) => t.kind === 'exit') || null;
+    }
 
-      this.refreshTriggerBadges();
+    if (
+      gameState.areRequiredNpcsVisited(stageId) &&
+      !gameState.areRequiredMinigamesDone(stageId)
+    ) {
+      return (
+        this.mapData.triggers.find(
+          (t) =>
+            t.kind === 'minigame' &&
+            t.minigameId &&
+            !prog.completedMinigames.has(t.minigameId)
+        ) || null
+      );
+    }
 
-      ui.showDialogue(trig.label, lines, () => {
-        this.renderExplorePanel();
-      });
+    return null;
+  }
+
+  private updateGuideArrow(time: number): void {
+    const target = this.getArrowTargetTrigger();
+    if (!target || this.isDepartingCutscene) {
+      this.guideArrow.setVisible(false);
       return;
     }
 
-    if (trig.kind === 'minigame') {
-      const firstDone = !this.isTriggerCompleted(trig);
-      if (trig.id === 'archery_minigame') {
-        if (firstDone && STAGE_CHOICE_DELTAS[trig.id]) {
-          gameState.applyMeterDelta(
-            STAGE_CHOICE_DELTAS[trig.id],
-            '完成「射箭平三藩」：成功平定三藩之亂，鞏固清初統治。'
-          );
-        }
-        void launchMinigameScene(this, 'ArcheryMinigame');
-      } else if (trig.id === 'talent_minigame') {
-        if (firstDone && STAGE_CHOICE_DELTAS[trig.id]) {
-          gameState.applyMeterDelta(
-            STAGE_CHOICE_DELTAS[trig.id],
-            '完成「任用人才」：不分滿漢唯才是用，促進滿漢一家。'
-          );
-        }
-        void launchMinigameScene(this, 'TalentMinigame');
-      } else if (trig.id === 'whack_minigame') {
-        if (firstDone && STAGE_CHOICE_DELTAS[trig.id]) {
-          gameState.applyMeterDelta(
-            STAGE_CHOICE_DELTAS[trig.id],
-            '完成「打擊貪官」：鐵腕肅貪追贓，國庫轉為充裕。'
-          );
-        }
-        void launchMinigameScene(this, 'WhackMinigame');
-      } else if (trig.id === 'southern_tour_minigame') {
-        if (firstDone && STAGE_CHOICE_DELTAS[trig.id]) {
-          gameState.applyMeterDelta(
-            STAGE_CHOICE_DELTAS[trig.id],
-            '完成「六下江南」：親歷南巡排場與國庫銀両消耗。'
-          );
-        }
-        void launchMinigameScene(this, 'SouthernTourMinigame');
-      }
-      return;
-    }
+    const tx = target.tileX * TILE_SIZE + TILE_SIZE / 2;
+    const ty = target.tileY * TILE_SIZE + TILE_SIZE / 2;
+    const dist = Phaser.Math.Distance.Between(
+      this.player.x,
+      this.player.y,
+      tx,
+      ty
+    );
 
-    if (trig.kind === 'exit') {
-      this.tryOpenExitGate(stageId);
+    const pulse = Math.sin(time * 0.008) * 4;
+    this.guideArrow.setVisible(true);
+
+    if (dist < 64) {
+      this.guideArrow.setPosition(tx, ty - 48 + pulse);
+      this.guideArrow.setRotation(0);
+    } else {
+      const angle = Math.atan2(ty - this.player.y, tx - this.player.x);
+      const radius = 78 + pulse;
+      const ax = Phaser.Math.Clamp(
+        this.player.x + Math.cos(angle) * radius,
+        20,
+        this.mapData.cols * TILE_SIZE - 20
+      );
+      const ay = Phaser.Math.Clamp(
+        this.player.y - 10 + Math.sin(angle) * radius,
+        20,
+        this.mapData.rows * TILE_SIZE - 20
+      );
+      this.guideArrow.setPosition(ax, ay);
+      this.guideArrow.setRotation(angle - Math.PI / 2);
     }
   }
 
-  private tryOpenExitGate(stageId: StageId): void {
+  private interactWithNearest(): void {
     const ui = this.registry.get('ui') as HudUI;
+    if (ui.isModalOpen || this.isDepartingCutscene) return;
 
-    if (!gameState.canExitCurrentStage()) {
+    this.clearWalkTarget();
+    if (!this.activeTrigger) {
       ui.showDialogue(
-        '過關提示',
-        [
-          '你尚未收集齊本關的歷史線索或完成小遊戲！',
-          this.computeCurrentStageHint()
-        ],
+        '探索提示',
+        ['附近沒有可傾談或調查的對象。請走近（或直接點按）人物、線索、挑戰桌或出口互動。'],
         () => this.renderExplorePanel()
       );
       return;
     }
 
-    const openExitQuizStep = () => {
-      ui.showExitQuizModal({
-        stageName: STAGE_NAMES[stageId],
-        questions: EXIT_QUIZZES[stageId],
-        expectedPassword: PASSWORDS[stageId],
-        onPassed: () => {
-          ui.showCerReflectionModal(stageId, () => {
-            this.completeCurrentStage(stageId);
-          });
-        },
-        onCancel: () => {
-          this.renderExplorePanel();
+    this.handleTriggerAction(this.activeTrigger);
+  }
+
+  private handleTriggerAction(trig: MapTrigger): void {
+    const stageId = gameState.currentStage;
+    const stageCfg = STAGES[stageId];
+    const prog = gameState.getStageProgress(stageId);
+    const ui = this.registry.get('ui') as HudUI;
+    this.clearWalkTarget();
+
+    if (trig.kind === 'decor_note') {
+      ui.showDialogue(
+        trig.label,
+        [trig.decorMessage || '此處並非出口。'],
+        () => this.renderExplorePanel()
+      );
+      return;
+    }
+
+    if (trig.kind === 'minigame' && trig.sceneKey) {
+      const ptx = Math.floor(this.player.x / TILE_SIZE);
+      const pty = Math.floor(this.player.y / TILE_SIZE);
+      gameState.savePlayerPosition(ptx, pty);
+      void launchMinigameScene(this, trig.sceneKey);
+      return;
+    }
+
+    if (trig.kind === 'npc' || trig.kind === 'clue') {
+      if (
+        gameState.mode === 'sequential' &&
+        stageId === 'qianlong' &&
+        trig.id === 'qianlong_emperor' &&
+        (prog.qianlongEndingPhase === 'find_qianlong' ||
+          prog.qianlongEndingPhase === 'teacher_password' ||
+          prog.qianlongEndingPhase === 'ask_qianlong')
+      ) {
+        this.runQianlongFinalSequence();
+        return;
+      }
+
+      const npcData = stageCfg.npcs[trig.id];
+      if (!npcData) return;
+
+      const tx = trig.tileX * TILE_SIZE + TILE_SIZE / 2;
+      const ty = trig.tileY * TILE_SIZE + TILE_SIZE / 2;
+
+      ui.showDialogue(npcData.name, npcData.lines, () => {
+        const { isFirstVisit } = gameState.markNpcVisited(npcData.id, stageId);
+        this.refreshBadges();
+        this.renderExplorePanel();
+        if (isFirstVisit) {
+          this.playEvidenceCollectedJuice(tx, ty);
         }
       });
-    };
+      return;
+    }
 
-    if (!gameState.jigsawSolved[stageId]) {
-      ui.showJigsawModal(
-        JIGSAWS[stageId],
+    if (trig.kind === 'exit') {
+      this.handleExitInteraction();
+    }
+  }
+
+  private handleExitInteraction(): void {
+    const stageId = gameState.currentStage;
+    const stageCfg = STAGES[stageId];
+    const prog = gameState.getStageProgress(stageId);
+    const ui = this.registry.get('ui') as HudUI;
+
+    if (
+      gameState.mode === 'sequential' &&
+      stageId === 'qianlong' &&
+      prog.passwordPassed &&
+      prog.qianlongEndingPhase !== 'none'
+    ) {
+      ui.showDialogue('御船船夫', [PROMPTS.FIND_QIANLONG_AGAIN], () => {
+        this.renderExplorePanel();
+      });
+      return;
+    }
+
+    if (!gameState.areRequiredNpcsVisited(stageId)) {
+      ui.showDialogue('提示', [stageCfg.lockedExitMessage], () => {
+        this.renderExplorePanel();
+      });
+      return;
+    }
+
+    if (!gameState.areRequiredMinigamesDone(stageId)) {
+      const pendingNames = stageCfg.minigames
+        .filter((m) => !prog.completedMinigames.has(m.id))
+        .map((m) => `「${m.stationName}」`)
+        .join('、');
+
+      ui.showDialogue(
+        '提示',
+        [
+          `人物與線索證據已收齊！請先跟著箭嘴完成本關的${pendingNames}，再回來進行答題。`
+        ],
         () => {
-          gameState.markJigsawSolved(stageId);
-          this.refreshTriggerBadges();
-          openExitQuizStep();
+          this.renderExplorePanel();
+        }
+      );
+      return;
+    }
+
+    if (!prog.quizPassed) {
+      ui.showStageQuiz(
+        stageCfg.quizzes,
+        () => {
+          gameState.setQuizPassed(stageId);
+          ui.showDialogue('答題完成', [PROMPTS.QUIZ_PASSED], () => {
+            this.openStagePasswordPad(stageId);
+          });
         },
         () => {
           this.renderExplorePanel();
         }
       );
-    } else {
-      openExitQuizStep();
+      return;
+    }
+
+    if (!prog.passwordPassed) {
+      this.openStagePasswordPad(stageId);
     }
   }
 
-  private completeCurrentStage(stageId: StageId): void {
+  private openStagePasswordPad(stageId: StageId): void {
+    const stageCfg = STAGES[stageId];
+    const ui = this.registry.get('ui') as HudUI;
+
+    ui.showPasswordPad({
+      title: `${stageCfg.shortTitle}出關密碼`,
+      hint: PROMPTS.QUIZ_PASSED,
+      expectedPassword: stageCfg.password,
+      allowCancel: true,
+      onCancel: () => {
+        this.renderExplorePanel();
+      },
+      onSuccess: () => {
+        gameState.setPasswordPassed(stageId);
+        this.onStagePasswordVerified(stageId);
+      }
+    });
+  }
+
+  private onStagePasswordVerified(stageId: StageId): void {
     const ui = this.registry.get('ui') as HudUI;
 
     if (gameState.mode === 'class') {
       gameState.markClassStageCompleted(stageId);
-      if (stageId === 'qianlong') {
-        this.playRoyalBoatDeparture(() => {
-          ui.renderClassCompleteModal(
-            STAGE_NAMES[stageId],
-            () => startExclusiveScene(this, 'ClassSelectScene'),
-            true
-          );
-        });
-      } else {
-        ui.renderClassCompleteModal(
-          STAGE_NAMES[stageId],
-          () => startExclusiveScene(this, 'ClassSelectScene'),
-          false
-        );
-      }
-      return;
-    }
-
-    if (stageId === 'kangxi') {
-      gameState.advanceToStage('yongzheng');
-      startExclusiveScene(this, 'OpeningScene', {
-        stageName: STAGE_NAMES.yongzheng
+      ui.showJigsawSummaryCard(stageId, () => {
+        this.scene.start('ClassSelectScene');
       });
       return;
     }
 
-    if (stageId === 'yongzheng') {
-      gameState.advanceToStage('qianlong');
-      startExclusiveScene(this, 'OpeningScene', {
-        stageName: STAGE_NAMES.qianlong
+    if (stageId === 'qianlong' && gameState.shouldEnterQianlongRemonstrance()) {
+      gameState.setQianlongEndingPhase('find_qianlong');
+      this.refreshBadges();
+      ui.showDialogue('過關提示', [PROMPTS.QIANLONG_AFTER_789_ARROW], () => {
+        this.renderExplorePanel(PROMPTS.FIND_QIANLONG_AGAIN);
       });
       return;
     }
 
-    this.playRoyalBoatDeparture(() => {
-      this.showModernEndingView();
+    const nextStage: StageId = stageId === 'kangxi' ? 'yongzheng' : 'qianlong';
+    gameState.advanceToStage(nextStage);
+    this.scene.start('OpeningScene', {
+      stageName: STAGE_NAMES[nextStage]
     });
   }
 
-  private playRoyalBoatDeparture(onArrived: () => void): void {
+  private runQianlongFinalSequence(): void {
+    const prog = gameState.getStageProgress('qianlong');
     const ui = this.registry.get('ui') as HudUI;
-    ui.clearMainLayer();
-    this.isDepartingCutscene = true;
 
-    if (!this.royalBoatSprite) {
-      onArrived();
+    const launchRemonstranceStep = () => {
+      gameState.setQianlongEndingPhase('ask_qianlong');
+      ui.showDialogue('乾隆皇帝', [PROMPTS.QIANLONG_FINAL_ASK_LINE], () => {
+        ui.showQianlongRemonstrancePanel({
+          entrySource: 'sequential',
+          onFinish: () => {
+            this.playRoyalBoatDeparture();
+          }
+        });
+      });
+    };
+
+    if (prog.qianlongEndingPhase === 'ask_qianlong') {
+      launchRemonstranceStep();
       return;
     }
 
-    this.tweens.killTweensOf(this.royalBoatSprite);
-    for (const esc of this.dockFleetBoats) {
-      this.tweens.killTweensOf(esc);
-    }
-
-    this.playerRing.setVisible(false);
-    this.playerShadow.setVisible(false);
-    this.player.setPosition(
-      this.royalBoatSprite.x - 4,
-      this.royalBoatSprite.y - 8
-    );
-    this.player.setFrame(CHAR_IDLE_FRAME.right);
-    this.player.setDepth(9.5);
-
-    this.cameras.main.startFollow(this.royalBoatSprite, true, 0.12, 0.12);
-
-    const flash = this.add
-      .rectangle(
-        this.royalBoatSprite.x,
-        this.royalBoatSprite.y,
-        1200,
-        900,
-        0xfff2c2,
-        0
-      )
-      .setDepth(50);
-
-    for (const esc of this.dockFleetBoats) {
-      this.tweens.add({
-        targets: esc,
-        x: esc.x + 250,
-        duration: 2100,
-        ease: 'Cubic.easeIn'
+    ui.showDialogue('乾隆皇帝', [PROMPTS.QIANLONG_WAIT_TEACHER], () => {
+      gameState.setQianlongEndingPhase('teacher_password');
+      ui.showTeacherPasswordPad(() => {
+        launchRemonstranceStep();
       });
+    });
+  }
+
+  private playRoyalBoatDeparture(): void {
+    gameState.setQianlongEndingPhase('departing');
+    this.isDepartingCutscene = true;
+    this.clearWalkTarget();
+    this.guideArrow.setVisible(false);
+    this.worldTargetIndicator.setVisible(false);
+    this.playerAura.setVisible(false);
+
+    if (gameState.mode === 'class') {
+      gameState.markClassStageCompleted('qianlong');
     }
 
-    this.tweens.add({
-      targets: [this.royalBoatSprite, this.player],
-      x: '+=260',
-      duration: 2100,
-      ease: 'Cubic.easeIn',
-      onUpdate: () => {
-        flash.setPosition(this.royalBoatSprite!.x, this.royalBoatSprite!.y);
-      }
-    });
+    const ui = this.registry.get('ui') as HudUI;
+    ui.clearMainOverlay();
+    ui.isModalOpen = true;
 
-    this.tweens.add({
-      targets: flash,
-      alpha: 1,
-      delay: 1350,
-      duration: 750,
-      onComplete: () => {
-        onArrived();
-      }
-    });
+    const cam = this.cameras.main;
+    if (this.royalBoatSprite) {
+      this.royalBoatIdleTween?.stop();
+      this.player.setVisible(false);
+
+      cam.stopFollow();
+      cam.setBounds(
+        0,
+        0,
+        this.mapData.cols * TILE_SIZE + 260,
+        this.mapData.rows * TILE_SIZE
+      );
+      cam.pan(
+        this.royalBoatSprite.x + 28,
+        this.royalBoatSprite.y,
+        700,
+        'Sine.easeOut'
+      );
+
+      this.time.delayedCall(750, () => {
+        if (!this.royalBoatSprite) return;
+        cam.startFollow(this.royalBoatSprite, true, 0.08, 0.08);
+        this.tweens.add({
+          targets: this.royalBoatSprite,
+          x: this.royalBoatSprite.x + 220,
+          duration: 2600,
+          ease: 'Quad.easeIn'
+        });
+        this.tweens.add({
+          targets: this.royalBoatSprite,
+          y: this.royalBoatSprite.y + 4,
+          duration: 420,
+          yoyo: true,
+          repeat: 5
+        });
+      });
+
+      this.time.delayedCall(3450, () => {
+        this.showModernEndingView();
+      });
+    } else {
+      this.showModernEndingView();
+    }
   }
 
   private showModernEndingView(): void {
-    this.isEndingView = true;
-    const ui = this.registry.get('ui') as HudUI;
+    gameState.setQianlongEndingPhase('returned_modern');
+    ensureSchoolExteriorTexture(this);
 
-    this.children.removeAll(true);
-
+    const END_W = 576;
+    const END_H = 432;
+    const { width: w, height: h, dpr } = toCssSize(
+      this.scale.width,
+      this.scale.height
+    );
     const cam = this.cameras.main;
     cam.stopFollow();
     cam.removeBounds();
-    cam.setBackgroundColor('#161c2e');
+    const rawZoom = Math.min(w / END_W, h / END_H);
+    const cssZoom = rawZoom >= 1 ? Math.max(1, Math.floor(rawZoom)) : rawZoom;
+    cam.setZoom(cssZoom * dpr);
+    cam.centerOn(END_W / 2, END_H / 2 + 24);
 
-    const W = 576;
-    const H = 432;
+    const overlay = this.add.container(0, 0).setDepth(100);
 
-    const fitEnding = () => {
-      const rawZ = Math.min(this.scale.width / W, this.scale.height / H);
-      const z = rawZ >= 1 ? Math.max(1, Math.floor(rawZ)) : rawZ;
-      cam.setZoom(z);
-      cam.centerOn(W / 2, H / 2 + 28);
-    };
-    fitEnding();
+    const bg = this.add.graphics();
+    bg.fillGradientStyle(0xb9e3fa, 0xd4effc, 0xe8f6fd, 0xe8f6fd, 1);
+    bg.fillRect(-600, -400, END_W + 1200, 650);
+    bg.fillStyle(0xd8d3c8, 1);
+    bg.fillRect(-600, 232, END_W + 1200, 22);
+    bg.fillStyle(0x4a525e, 1);
+    bg.fillRect(-600, 254, END_W + 1200, 420);
 
-    const g = this.add.graphics();
-    g.fillGradientStyle(0xb9e3fa, 0xd4effc, 0xe8f6fd, 0xe8f6fd, 1);
-    g.fillRect(0, 0, W, 248);
+    bg.fillStyle(0x781912, 0.96);
+    bg.fillRect(46, 16, END_W - 92, 52);
+    bg.lineStyle(3, 0xf0c246, 1);
+    bg.strokeRect(46, 16, END_W - 92, 52);
+    overlay.add(bg);
 
-    g.fillStyle(0xd8d3c8, 1);
-    g.fillRect(0, 224, W, 24);
-    g.fillStyle(0x4c5460, 1);
-    g.fillRect(0, 248, W, H - 248);
-
-    if (
-      this.textures.exists(SCHOOL_EXTERIOR_KEY) &&
-      this.textures.get(SCHOOL_EXTERIOR_KEY).key !== '__MISSING'
-    ) {
-      this.add
-        .image(W / 2, 132, SCHOOL_EXTERIOR_KEY)
-        .setDisplaySize(316, 212)
-        .setDepth(3);
+    if (this.textures.exists(SCHOOL_EXTERIOR_KEY)) {
+      const schoolImg = this.add
+        .image(END_W / 2, 152, SCHOOL_EXTERIOR_KEY)
+        .setDisplaySize(296, 198);
+      overlay.add(schoolImg);
     }
 
+    const t1 = this.add
+      .text(END_W / 2, 42, '已穿越時空旋渦平安返回彩雲聖若瑟小學', {
+        fontSize: '19px',
+        color: '#ffe89e',
+        fontStyle: 'bold',
+        stroke: '#2e0b06',
+        strokeThickness: 3
+      })
+      .setOrigin(0.5);
+
     const student = this.add
-      .sprite(W / 2, 232, 'char_student', CHAR_IDLE_FRAME.down)
-      .setScale(this.charLogicalScale * 1.45)
-      .setDepth(6);
+      .sprite(END_W / 2, 236, 'char_student', CHAR_IDLE_FRAME.down)
+      .setScale(2.1 / CHAR_HD_SCALE);
     student.play('char_student_down');
 
-    this.add
-      .text(W / 2, 24, '✨ 已穿越時空旋渦平安返回彩雲聖若瑟小學 ✨', {
-        fontFamily: '"PingFang HK", "Microsoft JhengHei", sans-serif',
-        fontSize: '16px',
-        color: '#1b2838',
-        backgroundColor: '#fff8e7e6',
-        padding: { x: 10, y: 4 },
-        fontStyle: 'bold'
-      })
-      .setOrigin(0.5)
-      .setDepth(8);
+    overlay.add([t1, student]);
 
-    upgradeSceneTextsToHd(this);
-
-    ui.renderSequentialEndingScreen(ENDING_TEXT, () => {
-      startExclusiveScene(this, 'TitleScene');
+    const ui = this.registry.get('ui') as HudUI;
+    ui.setNavigationHandlers({
+      onGoTitle: () => this.scene.start('TitleScene'),
+      onGoClassSelect:
+        gameState.mode === 'class'
+          ? () => this.scene.start('ClassSelectScene')
+          : undefined
     });
+    ui.renderEndingScreen(
+      () => this.scene.start('TitleScene'),
+      () => this.scene.start('ClassSelectScene')
+    );
   }
 }
