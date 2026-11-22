@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 
 /**
- * 用戶上傳之「彩雲聖若瑟小學」真實校舍外觀圖（270x181 高畫質 JPEG Base64，共 20,236 字元）
+ * 用戶上傳之「彩雲聖若瑟小學」真實校舍外觀圖（270x181 高畫質 JPEG Base64，共 20,236 字元精準校驗）
  * 採用瀏覽器原生 HTMLImageElement 解碼並透過 textures.addImage 掛載，
  * 徹底避開 Phaser XHRLoader 對 Data URI 的相容性限制，確保 100% 穩定顯示真實學校圖片。
  */
@@ -168,7 +168,7 @@ const SCHOOL_EXTERIOR_JPEG_LINES = [
   'PGQM+WBmjZYiHle4cueAoT6I+P41aVWRgCbw0y2YapgltWtnHdFh+sUDP2+VJLuwms5Nr4ZT0dehqYLIwOxWbaMnB6D1rythq+E2',
   'in4wxNNubmzE095NKm3eqZzn7TRNlFFprSyKJEMkEkeZCDksAMDAqYSQxW8cJv1wpx+igL5+JOPur2aOKW3LCeScIMgrwF+IxkUB',
   'JGSDEUnoO1lYE+cF1OKObVJXsreMRtIpR14VsgdB0xnNS6YrrNEzGPbiUDaMHO4ZzQzyXKgND+ljVgeBhhg8+7yr22v2NwiMuH3y',
-  'AceZIqNUYjEMU1R7n8yI1a7hEtwkrAqoXI5rS2msZYXkjMcaqxBwQOB50Nc28Ugk8JIQJnJIOCTk/zoZtLQPK8EvijY+Hqccen',
+  'AceZIqNUYjEMU1R7n8yI1a7hEtwkrAqoXIPI5rS2msZYXkjMcaqxBwQOB50Nc28Ugk8JIQJnJIOCTk/zoZtLQPK8EvijY+Hqccen',
   '8xWQqzNvViDJqKHaYxaOBFvUNG27k9eOhxS/VGISPcAxDHhxmglu7qxmBlVsIXw30hyR5jiibiSbUCB3bEqoYKi5PPn861UddUpV',
   'AlfIPWcir6ONt1LB7pZey8aSdjNVjYZU3MYCk5wMdOad9gbaO1165jjGBwcZJ+ofWkGiAxdg9c3KQROnDDB8qa/kxleXV7otnAfC',
   '5OeNp6V02UbGIg02ftU3c2F4y7Rf4/ffvj+FaQz+Xxp92h/7wX374/hWksq5BFUnAmbUC7t5mLro82//AB1/nRkP94i/fX8aFuRz',

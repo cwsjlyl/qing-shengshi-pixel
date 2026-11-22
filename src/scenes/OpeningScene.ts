@@ -21,6 +21,7 @@ const SCENE_H = 432;
 
 const VORTEX_OUTER_KEY = 'opening_vortex_outer_tex_v2';
 const VORTEX_INNER_KEY = 'opening_vortex_inner_tex_v2';
+const COMPACT_OPENING_DOCK_STYLE_ID = 'opening-compact-dock-style';
 
 interface VortexSpark {
   dot: Phaser.GameObjects.Arc;
@@ -51,6 +52,7 @@ export class OpeningScene extends Phaser.Scene {
 
   public create(data?: { stageName?: string }): void {
     stopOtherScenes(this);
+    this.ensureCompactOpeningDockStyle();
 
     this.stageLabel = data?.stageName || STAGE_NAMES[gameState.currentStage];
     const stageId: StageId = gameState.currentStage;
@@ -148,6 +150,12 @@ export class OpeningScene extends Phaser.Scene {
       .setDepth(24);
     this.traveler.play('char_student_right');
 
+    const enterExplore = () => {
+      vortexSfx.playConfirmEnterStage();
+      vortexSfx.stopAmbience();
+      this.scene.start('ExploreScene');
+    };
+
     const ui = this.registry.get('ui') as HudUI;
     ui.setNavigationHandlers({
       onGoTitle: () => {
@@ -162,11 +170,9 @@ export class OpeningScene extends Phaser.Scene {
             }
           : undefined
     });
-    ui.renderOpeningScreen(this.stageLabel, () => {
-      vortexSfx.playConfirmEnterStage();
-      vortexSfx.stopAmbience();
-      this.scene.start('ExploreScene');
-    });
+    // 先呼叫原生 renderOpeningScreen 以註冊快捷鍵與關閉小地圖，再替換為極簡單行底部列（絕不遮擋過場動畫）
+    ui.renderOpeningScreen(this.stageLabel, enterExplore);
+    this.mountCompactOpeningDock(enterExplore);
 
     this.fitViewport(this.scale.width, this.scale.height);
     this.time.delayedCall(0, () => {
@@ -174,6 +180,133 @@ export class OpeningScene extends Phaser.Scene {
         this.fitViewport(this.scale.width, this.scale.height);
       }
     });
+  }
+
+  /**
+   * 建立輕巧單行底部導覽列（移除全螢幕遮罩與冗長文字框，把畫面空間完整讓給學校旋渦穿越動畫）
+   */
+  private mountCompactOpeningDock(onEnterExplore: () => void): void {
+    const mainLayer = document.getElementById('hud-main-layer');
+    if (!mainLayer) return;
+
+    const safeStage = this.stageLabel
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+
+    mainLayer.innerHTML = `
+      <div class="opening-compact-dock">
+        <div class="opening-compact-meta">
+          <span class="opening-compact-pill">🌀 時空穿越</span>
+          <span class="opening-compact-title">由學校進入「${safeStage}」</span>
+        </div>
+        <div class="opening-compact-btns">
+          <button id="btn-opening-sfx" class="pixel-btn opening-sfx-toggle" type="button">
+            ${vortexSfx.muted ? '🔇 音效已關' : '🔊 旋渦音效'}
+          </button>
+          <button id="btn-start-stage" class="pixel-btn gold opening-enter-btn" type="button">
+            進入關卡 ▶
+          </button>
+        </div>
+      </div>
+    `;
+
+    const sfxBtn = mainLayer.querySelector<HTMLButtonElement>('#btn-opening-sfx');
+    sfxBtn?.addEventListener('click', () => {
+      const nowMuted = vortexSfx.toggleMute();
+      sfxBtn.textContent = nowMuted ? '🔇 音效已關' : '🔊 旋渦音效';
+    });
+
+    const startBtn = mainLayer.querySelector<HTMLButtonElement>('#btn-start-stage');
+    startBtn?.addEventListener('click', () => {
+      onEnterExplore();
+    });
+  }
+
+  private ensureCompactOpeningDockStyle(): void {
+    if (document.getElementById(COMPACT_OPENING_DOCK_STYLE_ID)) return;
+    const style = document.createElement('style');
+    style.id = COMPACT_OPENING_DOCK_STYLE_ID;
+    style.textContent = `
+      .opening-compact-dock {
+        position: absolute;
+        left: 50%;
+        bottom: max(10px, env(safe-area-inset-bottom, 10px));
+        transform: translateX(-50%);
+        width: min(94vw, 640px);
+        background: rgba(30, 17, 13, 0.92);
+        border: 2px solid #e8ba4b;
+        border-radius: 12px;
+        padding: 8px 12px;
+        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.55);
+        backdrop-filter: blur(4px);
+        pointer-events: auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        z-index: 30;
+      }
+      .opening-compact-meta {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        flex: 1 1 auto;
+      }
+      .opening-compact-pill {
+        background: #781912;
+        color: #ffe89e;
+        border: 1px solid rgba(232, 186, 75, 0.75);
+        border-radius: 999px;
+        padding: 3px 9px;
+        font-size: 12.5px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+      .opening-compact-title {
+        color: #fff8ec;
+        font-size: 14.5px;
+        font-weight: 700;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .opening-compact-btns {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+      .opening-compact-dock .opening-sfx-toggle {
+        padding: 7px 11px;
+        font-size: 13px;
+        min-height: 36px;
+        width: auto;
+      }
+      .opening-compact-dock .opening-enter-btn {
+        padding: 7px 15px;
+        font-size: 14px;
+        min-height: 36px;
+        width: auto;
+      }
+      @media (max-width: 560px) {
+        .opening-compact-dock {
+          flex-wrap: wrap;
+          justify-content: center;
+          padding: 7px 10px;
+          gap: 6px;
+        }
+        .opening-compact-meta {
+          justify-content: center;
+          flex-basis: 100%;
+        }
+        .opening-compact-title {
+          font-size: 13.5px;
+        }
+      }
+    `;
+    document.head.appendChild(style);
   }
 
   public update(_time: number, delta: number): void {
@@ -210,9 +343,6 @@ export class OpeningScene extends Phaser.Scene {
     this.updateTravelerVortexJourney();
   }
 
-  /**
-   * 同步控制主角三段式穿越動作與旋渦吸入／拋出穿越音效
-   */
   private updateTravelerVortexJourney(): void {
     if (!this.traveler) return;
 
@@ -326,12 +456,11 @@ export class OpeningScene extends Phaser.Scene {
     const topY = 62;
     const boxW = 232;
     const boxH = 228;
-    const photoH = 156; // 與 270x181 原圖比例 1.49:1 完全一致，不裁切不變形
+    const photoH = 156;
 
     const g = this.add.graphics().setDepth(2);
     g.fillGradientStyle(0xc4e7fa, 0xdcf1fc, 0xeef8fd, 0xeef8fd, 1);
     g.fillRect(leftX, topY, boxW, photoH);
-    // 校門前行人路與馬路無縫延伸供主角起跑
     g.fillStyle(0xd8d3c8, 1);
     g.fillRect(leftX, topY + photoH - 2, boxW, 20);
     g.fillStyle(0x555d68, 1);
@@ -688,9 +817,6 @@ export class OpeningScene extends Phaser.Scene {
     ctx.putImageData(imgData, 0, 0);
   }
 
-  /**
-   * 配合精簡版底部過場工具列，將過場全景動畫最大化置中於可視區域
-   */
   private fitViewport(gameW: number, gameH: number): void {
     const { width: w, height: h, dpr } = toCssSize(gameW, gameH);
     const cam = this.cameras.main;
@@ -700,7 +826,7 @@ export class OpeningScene extends Phaser.Scene {
     );
     const dockRect = dock?.getBoundingClientRect();
     const dockTopCss =
-      dockRect && dockRect.height > 0 ? dockRect.top : h - 72;
+      dockRect && dockRect.height > 0 ? dockRect.top : h - 68;
 
     const topPad = 8;
     const safeBottom = Math.max(200, Math.min(h - 6, dockTopCss - 8));
