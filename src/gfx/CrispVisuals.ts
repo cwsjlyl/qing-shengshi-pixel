@@ -3,8 +3,12 @@ import Phaser from 'phaser';
 /** 角色精靈圖原生高清邏輯縮放比例（128x168 對應世界 32x42 邏輯尺寸） */
 export const CHAR_HD_SCALE = 4;
 
-const HD_CHAR_CACHE_NAME = 'qing-hd-chars-v3';
-const LEGACY_CACHE_NAMES = ['qing-hd-chars-v1', 'qing-hd-chars-v2'];
+const HD_CHAR_CACHE_NAME = 'qing-hd-chars-v4';
+const LEGACY_CACHE_NAMES = [
+  'qing-hd-chars-v1',
+  'qing-hd-chars-v2',
+  'qing-hd-chars-v3'
+];
 
 const CRISP_FONT_STACK =
   '"PingFang HK", "Heiti TC", "Apple LiGothic", "Noto Sans TC", "Microsoft JhengHei", sans-serif';
@@ -147,6 +151,43 @@ function epxScale2x(src: Uint32Array, w: number, h: number): Uint32Array {
   return dst;
 }
 
+function applyAdaptiveSilhouetteOutline(buf: Uint32Array, w: number, h: number): Uint32Array {
+  const out = new Uint32Array(buf);
+  const outlineColor = packPixel(26, 16, 12, 236);
+  const dirs = [
+    [0, -1],
+    [1, 0],
+    [0, 1],
+    [-1, 0]
+  ];
+
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const idx = y * w + x;
+      if (((buf[idx] >>> 24) & 0xff) !== 0) continue;
+
+      let touchesBrightEdge = false;
+      for (const [ox, oy] of dirs) {
+        const np = buf[(y + oy) * w + (x + ox)];
+        const na = (np >>> 24) & 0xff;
+        if (na >= 180) {
+          const r = (np >>> 16) & 0xff;
+          const g = (np >>> 8) & 0xff;
+          const b = np & 0xff;
+          if (r + g + b > 140) {
+            touchesBrightEdge = true;
+            break;
+          }
+        }
+      }
+      if (touchesBrightEdge) {
+        out[idx] = outlineColor;
+      }
+    }
+  }
+  return out;
+}
+
 function registerHdCharSheetAndAnims(
   scene: Phaser.Scene,
   key: string,
@@ -227,16 +268,22 @@ function buildSingleCharacterHdCanvas(
       const raw = frameImg.data;
       for (let i = 0; i < packed1x.length; i++) {
         const bi = i * 4;
-        packed1x[i] = packPixel(raw[bi], raw[bi + 1], raw[bi + 2], raw[bi + 3]);
+        const a = raw[bi + 3];
+        if (a < 80) {
+          packed1x[i] = 0;
+        } else {
+          packed1x[i] = packPixel(raw[bi], raw[bi + 1], raw[bi + 2], 255);
+        }
       }
 
       const up2x = epxScale2x(packed1x, fw, fh);
       const up4x = epxScale2x(up2x, fw * 2, fh * 2);
+      const outlined4x = applyAdaptiveSilhouetteOutline(up4x, fw4, fh4);
 
       const outImgData = dstCtx.createImageData(fw4, fh4);
       const outBytes = outImgData.data;
-      for (let i = 0; i < up4x.length; i++) {
-        const p = up4x[i];
+      for (let i = 0; i < outlined4x.length; i++) {
+        const p = outlined4x[i];
         const bi = i * 4;
         outBytes[bi] = (p >>> 16) & 0xff;
         outBytes[bi + 1] = (p >>> 8) & 0xff;
@@ -273,7 +320,6 @@ export async function enhanceAllCharacterTexturesCached(
 
     const fw = frame0.width;
     const fh = frame0.height;
-    // 若 OriginalArtLoader 已直接建立 128x168 原生高清像素貼圖，保持原生銳利像素不再平滑重繪
     if (fw <= 0 || fh <= 0 || fw >= 120) continue;
 
     const fw4 = fw * CHAR_HD_SCALE;
