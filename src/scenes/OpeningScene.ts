@@ -366,7 +366,7 @@ export class OpeningScene extends Phaser.Scene {
               ? TileIndex.RED_CARPET_CENTER
               : TileIndex.HALL_GOLD_BRICK_A;
         } else if (stageId === 'qianlong' && relRow >= 2 && relCol >= 5) {
-          frame = relCol === 5 ? TileIndex.STONE_BANK : TileIndex.WATER_1;
+          frame = relCol === 5 ? TileIndex.MARBLE_PATH_A : TileIndex.WATER_1;
         } else if (relCol >= 2 && relCol <= 5) {
           frame =
             relRow === 1 && (relCol === 3 || relCol === 4)
