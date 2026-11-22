@@ -3,7 +3,8 @@ import { OriginalArtLoader } from '../art/OriginalArtLoader';
 import { ClassroomAssetPipeline } from '../art/ClassroomAssetPipeline';
 import {
   SCHOOL_EXTERIOR_DATA_URI,
-  SCHOOL_EXTERIOR_KEY
+  SCHOOL_EXTERIOR_KEY,
+  ensureSchoolExteriorTexture
 } from '../art/schoolExteriorUri';
 import {
   enhanceAllCharacterTexturesCached,
@@ -41,11 +42,7 @@ export class PreloadScene extends Phaser.Scene {
 
     await new Promise<void>((r) => setTimeout(r, 16));
 
-    if (this.textures.exists(SCHOOL_EXTERIOR_KEY)) {
-      this.textures
-        .get(SCHOOL_EXTERIOR_KEY)
-        .setFilter(Phaser.Textures.FilterMode.NEAREST);
-    }
+    ensureSchoolExteriorTexture(this);
 
     PixelArtGenerator.generateAll(this);
     OriginalArtLoader.buildAllFromLoadedAssets(this);

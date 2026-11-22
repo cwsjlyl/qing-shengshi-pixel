@@ -182,7 +182,7 @@ export class ExploreScene extends Phaser.Scene {
         const baseDepth = prop.aboveCanopy ? 22 : 4.2 + sortTileY * 0.1;
 
         this.add
-          .Ellipse(
+          .ellipse(
             px,
             py - 2,
             Math.max(18, Math.round(prop.displayW * 0.68)),
@@ -338,7 +338,6 @@ export class ExploreScene extends Phaser.Scene {
           if (this.isNearTrigger(trig, 58)) {
             this.clearWalkTarget();
             const opp = this.getOppositeFacing(this.playerDir);
-            // 對話時避免 NPC 轉成背面朝鏡頭，確保正面或側面清晰可見
             const talkFacing = opp === 'up' ? 'down' : opp;
             npcSprite.setFrame(CHAR_IDLE_FRAME[talkFacing]);
             this.handleTriggerAction(trig);
@@ -622,10 +621,6 @@ export class ExploreScene extends Phaser.Scene {
     document.head.appendChild(style);
   }
 
-  /**
-   * 根據裝置尺寸與玩家選擇的視野檔位計算清晰縮放倍率：
-   * iPad 預設採用 1.5x 廣角（相較舊版 3x，水平與垂直視野各增 2 倍，可視總面積擴大 4 倍！）
-   */
   private computeBaseZoomForPreset(
     w: number,
     h: number,
@@ -642,7 +637,6 @@ export class ExploreScene extends Phaser.Scene {
       if (minDim >= 680) return 2.25;
       return 2.0;
     }
-    // standard（預設舒適廣角：讓學生一眼看清建築全貌、路牌與周圍 NPC）
     if (minDim >= 900) return 1.75;
     if (minDim >= 680) return 1.5;
     return 1.5;
@@ -1326,13 +1320,11 @@ export class ExploreScene extends Phaser.Scene {
     g.fillGradientStyle(0xb9e3fa, 0xd4effc, 0xe8f6fd, 0xe8f6fd, 1);
     g.fillRect(0, 0, W, 248);
 
-    // 地面行人道與校園馬路
     g.fillStyle(0xd8d3c8, 1);
     g.fillRect(0, 224, W, 24);
     g.fillStyle(0x4c5460, 1);
     g.fillRect(0, 248, W, H - 248);
 
-    // 呈現真實「彩雲聖若瑟小學」校舍外觀，象徵由清朝穿越返回母校
     if (
       this.textures.exists(SCHOOL_EXTERIOR_KEY) &&
       this.textures.get(SCHOOL_EXTERIOR_KEY).key !== '__MISSING'
