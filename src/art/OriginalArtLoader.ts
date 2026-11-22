@@ -1,7 +1,6 @@
 import Phaser from 'phaser';
 import { CHAR_HD_SCALE } from '../gfx/CrispVisuals';
 import { TILE_SIZE, TileIndex } from '../gfx/PixelArtGenerator';
-import { SCHOOLBOY_SHEET_DATA_URI } from './schoolboySheetUri';
 
 /**
  * 原創 PNG 於 Phaser Loader 的內部鍵值
@@ -17,9 +16,6 @@ export const RAW_PNG_KEYS = {
 export const PALACE_TILES_HD_KEY = 'palace_tiles_hd';
 export const TILE_HD_PX = 48;
 
-/**
- * 立體建築、多樹種獨立樹冠、自然邊緣過渡、軍營與船隻物件圖集鍵值
- */
 export const HD_PROPS_ATLAS_KEY = 'hd_art_props';
 
 export type PropStampFrame =
@@ -137,14 +133,6 @@ interface CharacterSheetSpec {
   robeRemap?: RobeRemapRule;
 }
 
-/**
- * 對齊上傳之五列角色精靈圖：
- * 第 0 列：清帝（康熙、雍正、乾隆）
- * 第 1 列：朝廷官員（滿族官員、貪官甲、貪官乙、和珅）
- * 第 2 列：清兵（八旗甲兵）
- * 第 3 列：農夫（斗笠百姓）
- * 第 4 列：漢族士人／書生（使滿漢人物造型鮮明區分）
- */
 const CHARACTER_SPECS: CharacterSheetSpec[] = [
   { key: 'char_student', row: 4, sideFacesRight: true },
   { key: 'char_kangxi_emperor', row: 0, sideFacesRight: false },
@@ -216,7 +204,8 @@ export class OriginalArtLoader {
     scene.load.image(RAW_PNG_KEYS.JIANGNAN, 'assets/tilesets/tileset-jiangnan.png');
     scene.load.image(RAW_PNG_KEYS.CAMP_PIER, 'assets/tilesets/tileset-camp-pier.png');
     scene.load.image(RAW_PNG_KEYS.CHARACTERS, 'assets/sprites/sprites-characters.png');
-    scene.load.image(RAW_PNG_KEYS.SCHOOLBOY, SCHOOLBOY_SHEET_DATA_URI);
+    // 載入完整四方向實體 PNG/WebP 主角小學生精靈圖（避免長字串 Data URI 截斷造成左右行走空白）
+    scene.load.image(RAW_PNG_KEYS.SCHOOLBOY, 'assets/sprites/char-student-schoolboy.png');
 
     scene.load.on('loaderror', (file: Phaser.Loader.File) => {
       console.warn(
@@ -241,7 +230,6 @@ export class OriginalArtLoader {
     const cleanJiangnan = jiangnanImg ? this.healSheetGridlines(jiangnanImg, 8, 12) : null;
     const cleanCamp = campImg ? this.healSheetGridlines(campImg, 8, 8) : null;
 
-    // 同步建立 24x24 標準地磚（相容小遊戲）與 48x48 雙倍高清地磚（供探索與主頁地圖呈現 4 倍像素細節）
     this.buildPalaceTilesetBySize(
       scene,
       'palace_tiles',
@@ -288,6 +276,17 @@ export class OriginalArtLoader {
     return c;
   }
 
+  /** 安全離屏水平翻轉（避免 WebKit / iPad Safari 於負縮放 9 參數 drawImage 偶發空白問題） */
+  private static flipCanvasHorizontal(src: HTMLCanvasElement): HTMLCanvasElement {
+    const out = this.makeCanvas(src.width, src.height);
+    const ctx = out.getContext('2d', { willReadFrequently: true })!;
+    ctx.imageSmoothingEnabled = false;
+    ctx.translate(out.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(src, 0, 0);
+    return out;
+  }
+
   private static fillBox(
     ctx: CanvasRenderingContext2D,
     x: number,
@@ -321,11 +320,11 @@ export class OriginalArtLoader {
 
     for (let c = 1; c < cols; c++) {
       const gxCenter = Math.round((c * w) / cols);
-      for (let dx = -1; dx <= 1; dx++) {
+      for (let dx = -2; dx <= 2; dx++) {
         const x = gxCenter + dx;
-        if (x < 3 || x >= w - 3) continue;
-        const leftX = gxCenter - 3;
-        const rightX = gxCenter + 3;
+        if (x < 4 || x >= w - 4) continue;
+        const leftX = gxCenter - 4;
+        const rightX = gxCenter + 4;
         for (let y = 0; y < h; y++) {
           const p = (y * w + x) * 4;
           const pL = (y * w + leftX) * 4;
@@ -335,7 +334,7 @@ export class OriginalArtLoader {
           const lumR = d[pR] * 0.299 + d[pR + 1] * 0.587 + d[pR + 2] * 0.114;
           const chroma =
             Math.max(d[p], d[p + 1], d[p + 2]) - Math.min(d[p], d[p + 1], d[p + 2]);
-          if (chroma <= 26 && lum < Math.min(lumL, lumR) - 10) {
+          if (chroma <= 28 && lum < Math.min(lumL, lumR) - 8) {
             d[p] = (d[pL] + d[pR]) >> 1;
             d[p + 1] = (d[pL + 1] + d[pR + 1]) >> 1;
             d[p + 2] = (d[pL + 2] + d[pR + 2]) >> 1;
@@ -346,11 +345,11 @@ export class OriginalArtLoader {
 
     for (let r = 1; r < rows; r++) {
       const gyCenter = Math.round((r * h) / rows);
-      for (let dy = -1; dy <= 1; dy++) {
+      for (let dy = -2; dy <= 2; dy++) {
         const y = gyCenter + dy;
-        if (y < 3 || y >= h - 3) continue;
-        const topY = gyCenter - 3;
-        const botY = gyCenter + 3;
+        if (y < 4 || y >= h - 4) continue;
+        const topY = gyCenter - 4;
+        const botY = gyCenter + 4;
         for (let x = 0; x < w; x++) {
           const p = (y * w + x) * 4;
           const pT = (topY * w + x) * 4;
@@ -360,7 +359,7 @@ export class OriginalArtLoader {
           const lumB = d[pB] * 0.299 + d[pB + 1] * 0.587 + d[pB + 2] * 0.114;
           const chroma =
             Math.max(d[p], d[p + 1], d[p + 2]) - Math.min(d[p], d[p + 1], d[p + 2]);
-          if (chroma <= 26 && lum < Math.min(lumT, lumB) - 10) {
+          if (chroma <= 28 && lum < Math.min(lumT, lumB) - 8) {
             d[p] = (d[pT] + d[pB]) >> 1;
             d[p + 1] = (d[pT + 1] + d[pB + 1]) >> 1;
             d[p + 2] = (d[pT + 2] + d[pB + 2]) >> 1;
@@ -373,12 +372,15 @@ export class OriginalArtLoader {
     return out;
   }
 
+  /**
+   * 涵蓋所有 PNG 常見透明棋盤格（中灰 108..224 與淺灰／純白 225..255，低彩度 <=24）：
+   * 外部由 4 連通邊界漫水填充，遇深色描邊 (<108) 或彩色像素 (>24) 即停，因此絕不誤傷內部衣服或白牆！
+   */
   private static isNeutralCheckerPixel(r: number, g: number, b: number, a: number): boolean {
-    if (a < 20) return true;
+    if (a < 28) return true;
     const chroma = Math.max(r, g, b) - Math.min(r, g, b);
     const lum = (r * 299 + g * 587 + b * 114) / 1000;
-    // 精準鎖定灰白棋盤格亮度區間 (134..224)，保護純白靴底與衣領 (>=232)
-    return chroma <= 16 && lum >= 134 && lum <= 224;
+    return chroma <= 24 && lum >= 108;
   }
 
   private static isThinGridBridge(
@@ -394,7 +396,7 @@ export class OriginalArtLoader {
     const b = data[p + 2];
     const chroma = Math.max(r, g, b) - Math.min(r, g, b);
     const lum = (r + g + b) / 3;
-    if (chroma > 20 || lum < 102 || lum > 140) return false;
+    if (chroma > 24 || lum < 90 || lum > 145) return false;
     if (x >= 2 && x < w - 2) {
       const pL = (y * w + (x - 2)) * 4;
       const pR = (y * w + (x + 2)) * 4;
@@ -418,7 +420,13 @@ export class OriginalArtLoader {
     return false;
   }
 
-  public static removeCheckerboardAndGrid(canvas: HTMLCanvasElement): void {
+  /**
+   * 深度三階段棋盤格去背與毛邊清除（徹底清除灰格、白格、封閉空隙及邊緣抗鋸齒灰白殘影）
+   */
+  public static removeCheckerboardAndGrid(
+    canvas: HTMLCanvasElement,
+    seedSidesOnly = false
+  ): void {
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
     const w = canvas.width;
@@ -441,6 +449,7 @@ export class OriginalArtLoader {
     };
 
     const trySeed = (px: number, py: number) => {
+      if (px < 0 || px >= w || py < 0 || py >= h) return;
       const idx = py * w + px;
       if (!visited[idx] && canClearBg(px, py)) {
         visited[idx] = 1;
@@ -449,9 +458,11 @@ export class OriginalArtLoader {
       }
     };
 
-    for (let x = 0; x < w; x++) {
-      trySeed(x, 0);
-      trySeed(x, h - 1);
+    if (!seedSidesOnly) {
+      for (let x = 0; x < w; x++) {
+        trySeed(x, 0);
+        trySeed(x, h - 1);
+      }
     }
     for (let y = 0; y < h; y++) {
       trySeed(0, y);
@@ -465,6 +476,7 @@ export class OriginalArtLoader {
       [0, -1]
     ];
 
+    // 第一階段：邊界 4 連通漫水填充（連通清除所有外圍灰格與白格）
     while (qHead < qTail) {
       const curr = queue[qHead++];
       const cx = curr % w;
@@ -482,6 +494,7 @@ export class OriginalArtLoader {
       }
     }
 
+    // 第二階段：清除被包圍的內部封閉棋盤格空洞（如兵器架槍桿間、桌腳下、柵欄間、雙腿手臂間）
     const compBuf = new Int32Array(total);
     for (let idx = 0; idx < total; idx++) {
       if (visited[idx]) continue;
@@ -495,12 +508,26 @@ export class OriginalArtLoader {
       compBuf[cTail++] = idx;
       let lightCount = 0;
       let midGreyCount = 0;
+      let minLum = 255;
+      let maxLum = 0;
+      let chromaSum = 0;
+      let darkBorderTouches = 0;
+      let totalBorderTouches = 0;
+
       while (cHead < cTail) {
         const cur = compBuf[cHead++];
         const cp = cur * 4;
-        const lum = (data[cp] * 299 + data[cp + 1] * 587 + data[cp + 2] * 114) / 1000;
-        if (lum >= 200) lightCount++;
-        else if (lum >= 136 && lum <= 185) midGreyCount++;
+        const r = data[cp];
+        const g = data[cp + 1];
+        const b = data[cp + 2];
+        const lum = (r * 299 + g * 587 + b * 114) / 1000;
+        const ch = Math.max(r, g, b) - Math.min(r, g, b);
+        chromaSum += ch;
+        if (lum < minLum) minLum = lum;
+        if (lum > maxLum) maxLum = lum;
+        if (lum >= 196) lightCount++;
+        if (lum >= 112 && lum <= 212) midGreyCount++;
+
         const cx = cur % w;
         const cy = (cur - cx) / w;
         for (let d = 0; d < 4; d++) {
@@ -513,10 +540,29 @@ export class OriginalArtLoader {
           if (this.isNeutralCheckerPixel(data[np], data[np + 1], data[np + 2], data[np + 3])) {
             visited[nIdx] = 1;
             compBuf[cTail++] = nIdx;
+          } else {
+            totalBorderTouches++;
+            const nLum = (data[np] * 299 + data[np + 1] * 587 + data[np + 2] * 114) / 1000;
+            if (data[np + 3] < 28 || nLum < 96) {
+              darkBorderTouches++;
+            }
           }
         }
       }
-      if (cTail >= 18 && lightCount >= 5 && midGreyCount >= 5) {
+
+      const avgChroma = chromaSum / Math.max(1, cTail);
+      const isTwoToneCheckerHole =
+        cTail >= 5 && maxLum - minLum >= 18 && lightCount >= 2 && midGreyCount >= 2;
+      const isPureGreyPocket =
+        cTail >= 4 &&
+        cTail <= 360 &&
+        avgChroma <= 13 &&
+        minLum >= 126 &&
+        maxLum <= 218 &&
+        totalBorderTouches > 0 &&
+        darkBorderTouches / totalBorderTouches >= 0.62;
+
+      if (isTwoToneCheckerHole || isPureGreyPocket) {
         for (let i = 0; i < cTail; i++) {
           cleared[compBuf[i]] = 1;
         }
@@ -529,23 +575,129 @@ export class OriginalArtLoader {
       }
     }
 
-    for (let y = 1; y < h - 1; y++) {
-      for (let x = 1; x < w - 1; x++) {
-        const idx = y * w + x;
-        const p = idx * 4;
-        if (data[p + 3] === 0) continue;
-        const maxC = Math.max(data[p], data[p + 1], data[p + 2]);
-        const minC = Math.min(data[p], data[p + 1], data[p + 2]);
-        const lum = (data[p] + data[p + 1] + data[p + 2]) / 3;
-        if (maxC - minC <= 14 && lum >= 140 && lum <= 220) {
-          const emptyNeighbors =
-            (data[(idx - 1) * 4 + 3] === 0 ? 1 : 0) +
-            (data[(idx + 1) * 4 + 3] === 0 ? 1 : 0) +
-            (data[(idx - w) * 4 + 3] === 0 ? 1 : 0) +
-            (data[(idx + w) * 4 + 3] === 0 ? 1 : 0);
-          if (emptyNeighbors >= 3) {
-            data[p + 3] = 0;
+    ctx.putImageData(imgData, 0, 0);
+    // 第三階段：多輪輪廓去灰白毛邊與孤立雜點清除
+    this.dehaloAlphaEdges(canvas, 3);
+  }
+
+  /**
+   * 針對去背後的物件與角色外緣進行精細去灰白殘邊（Dehalo）與懸浮碎點清理
+   */
+  private static dehaloAlphaEdges(canvas: HTMLCanvasElement, passes = 2): void {
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+    const w = canvas.width;
+    const h = canvas.height;
+    const imgData = ctx.getImageData(0, 0, w, h);
+    const data = imgData.data;
+
+    for (let pass = 0; pass < passes; pass++) {
+      const snapAlpha = new Uint8Array(w * h);
+      for (let i = 0; i < w * h; i++) {
+        snapAlpha[i] = data[i * 4 + 3];
+      }
+
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const idx = y * w + x;
+          if (snapAlpha[idx] === 0) continue;
+          const p = idx * 4;
+          const r = data[p];
+          const g = data[p + 1];
+          const b = data[p + 2];
+          const chroma = Math.max(r, g, b) - Math.min(r, g, b);
+          const lum = (r * 299 + g * 587 + b * 114) / 1000;
+
+          if (chroma > 26 || lum < 110) continue;
+
+          let empty4 = 0;
+          let empty8 = 0;
+          let darkOrColor8 = 0;
+
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              const nx = x + dx;
+              const ny = y + dy;
+              const isCard = dx === 0 || dy === 0;
+              if (nx < 0 || nx >= w || ny < 0 || ny >= h) {
+                empty8++;
+                if (isCard) empty4++;
+                continue;
+              }
+              const nIdx = ny * w + nx;
+              if (snapAlpha[nIdx] < 24) {
+                empty8++;
+                if (isCard) empty4++;
+              } else {
+                const np = nIdx * 4;
+                const nr = data[np];
+                const ng = data[np + 1];
+                const nb = data[np + 2];
+                const nChroma = Math.max(nr, ng, nb) - Math.min(nr, ng, nb);
+                const nLum = (nr * 299 + ng * 587 + nb * 114) / 1000;
+                if (nChroma > 28 || nLum < 96) {
+                  darkOrColor8++;
+                }
+              }
+            }
           }
+
+          if (empty4 === 0) continue;
+
+          if (lum <= 228) {
+            if (empty4 >= 2 || (empty8 >= 3 && darkOrColor8 >= 1)) {
+              data[p + 3] = 0;
+            }
+          } else {
+            // 純白外凸殘點（>=3 面懸空）予以修齊
+            if (empty4 >= 3 || (empty4 >= 2 && empty8 >= 5)) {
+              data[p + 3] = 0;
+            }
+          }
+        }
+      }
+    }
+
+    // 清除面積 <= 5 像素的孤立灰白懸浮碎點
+    const total = w * h;
+    const seen = new Uint8Array(total);
+    const buf = new Int32Array(total);
+    const dirs4 = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1]
+    ];
+    for (let idx = 0; idx < total; idx++) {
+      if (seen[idx] || data[idx * 4 + 3] < 24) continue;
+      let head = 0;
+      let tail = 0;
+      seen[idx] = 1;
+      buf[tail++] = idx;
+      let chromaSum = 0;
+      while (head < tail) {
+        const cur = buf[head++];
+        const cp = cur * 4;
+        chromaSum +=
+          Math.max(data[cp], data[cp + 1], data[cp + 2]) -
+          Math.min(data[cp], data[cp + 1], data[cp + 2]);
+        const cx = cur % w;
+        const cy = (cur - cx) / w;
+        for (let d = 0; d < 4; d++) {
+          const nx = cx + dirs4[d][0];
+          const ny = cy + dirs4[d][1];
+          if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+          const nIdx = ny * w + nx;
+          if (!seen[nIdx] && data[nIdx * 4 + 3] >= 24) {
+            seen[nIdx] = 1;
+            buf[tail++] = nIdx;
+          }
+        }
+      }
+      if (tail <= 5 && chromaSum / tail <= 26) {
+        for (let i = 0; i < tail; i++) {
+          data[buf[i] * 4 + 3] = 0;
         }
       }
     }
@@ -695,6 +847,7 @@ export class OriginalArtLoader {
       }
     }
     ctx.putImageData(imgData, 0, 0);
+    this.dehaloAlphaEdges(canvas, 2);
   }
 
   private static extractGridSubCanvas(
@@ -728,7 +881,8 @@ export class OriginalArtLoader {
     ny: number,
     nw: number,
     nh: number,
-    transparentBg = true
+    transparentBg = true,
+    seedSidesOnly = false
   ): HTMLCanvasElement {
     const sx = Math.max(0, Math.round(nx * source.width));
     const sy = Math.max(0, Math.round(ny * source.height));
@@ -738,7 +892,7 @@ export class OriginalArtLoader {
     const ctx = out.getContext('2d', { willReadFrequently: true })!;
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(source, sx, sy, sw, sh, 0, 0, sw, sh);
-    if (transparentBg) this.removeCheckerboardAndGrid(out);
+    if (transparentBg) this.removeCheckerboardAndGrid(out, seedSidesOnly);
     return out;
   }
 
@@ -1058,12 +1212,7 @@ export class OriginalArtLoader {
     this.fillBox(ctx, 6, 21, 2, 4, '#4a3210');
     this.fillBox(ctx, 6, 22, 2, 2, '#f0be42');
     if (!isRight) return base;
-    const flipped = this.makeCanvas(44, 42);
-    const fCtx = flipped.getContext('2d')!;
-    fCtx.translate(44, 0);
-    fCtx.scale(-1, 1);
-    fCtx.drawImage(base, 0, 0);
-    return flipped;
+    return this.flipCanvasHorizontal(base);
   }
 
   private static buildPalaceDougongSpan(w = 96, h = 18): HTMLCanvasElement {
@@ -1104,12 +1253,7 @@ export class OriginalArtLoader {
     this.fillBox(ctx, 15, 29, 3, 3, '#8c8577');
     this.fillBox(ctx, 16, 30, 1, 1, '#faf7f0');
     if (!isRight) return base;
-    const flipped = this.makeCanvas(26, 42);
-    const fCtx = flipped.getContext('2d')!;
-    fCtx.translate(26, 0);
-    fCtx.scale(-1, 1);
-    fCtx.drawImage(base, 0, 0);
-    return flipped;
+    return this.flipCanvasHorizontal(base);
   }
 
   private static buildPalaceCornerPilaster(): HTMLCanvasElement {
@@ -1467,9 +1611,6 @@ export class OriginalArtLoader {
     return out;
   }
 
-  /**
-   * 參照上傳軍營素材（右下捆綁原木堆與柴火堆）繪製高細節軍需原木與營火柴堆
-   */
   private static buildCampTimberLogs(): HTMLCanvasElement {
     const w = 48;
     const h = 28;
@@ -1489,7 +1630,6 @@ export class OriginalArtLoader {
     drawLogRow(15, 5, 4);
     drawLogRow(9, 9, 3);
     drawLogRow(4, 14, 2);
-    // 麻繩捆紮帶
     this.fillBox(ctx, 16, 4, 2, 18, '#c9ab70');
     this.fillBox(ctx, 29, 9, 2, 13, '#c9ab70');
     return out;
@@ -1585,25 +1725,7 @@ export class OriginalArtLoader {
       this.fillBox(ctx, leanX + 12, baseBot - 12, 8, 6, '#638c52');
     }
 
-    const wallSample = jiangnanImg
-      ? this.extractNormalizedSubCanvas(jiangnanImg, 0.39, 0.555, 0.09, 0.048, false)
-      : null;
     this.fillBox(ctx, mainX, 34, mainW, baseBot - 34, '#f2eee4');
-    if (wallSample) {
-      ctx.globalAlpha = 0.42;
-      ctx.drawImage(
-        wallSample,
-        0,
-        0,
-        wallSample.width,
-        wallSample.height,
-        mainX,
-        34,
-        mainW,
-        baseBot - 34
-      );
-      ctx.globalAlpha = 1;
-    }
     this.fillBox(ctx, mainX, 33, mainW, 2, '#453124');
     this.fillBox(ctx, mainX, 35, mainW, 4, 'rgba(18, 14, 12, 0.30)');
     this.fillBox(ctx, mainX, baseBot - 7, mainW, 7, '#757c80');
@@ -1616,7 +1738,7 @@ export class OriginalArtLoader {
     const roofLeft = mainX - 5;
     const roofRight = mainX + mainW + 4;
     const roofSample = jiangnanImg
-      ? this.extractNormalizedSubCanvas(jiangnanImg, 0.635, 0.506, 0.11, 0.042, false)
+      ? this.extractNormalizedSubCanvas(jiangnanImg, 0.635, 0.506, 0.11, 0.042, true)
       : null;
     if (roofSample) {
       for (let rx = roofLeft + 3; rx < roofRight - 3; rx += 24) {
@@ -1719,21 +1841,38 @@ export class OriginalArtLoader {
       rSpan = 1,
       inset = 4,
       transparent = false,
-      fallbackColor = '#8c7d6b'
+      fallbackColor = '#8c7d6b',
+      solidUnderlay?: string
     ) => {
       if (!src) {
         putTileCanvas(tileIdx, this.makeSolidFallbackTile(S, fallbackColor));
         return;
       }
-      putTileCanvas(
-        tileIdx,
-        this.extractGridSubCanvas(src, gCols, gRows, c, r, cSpan, rSpan, inset, transparent)
+      const extracted = this.extractGridSubCanvas(
+        src,
+        gCols,
+        gRows,
+        c,
+        r,
+        cSpan,
+        rSpan,
+        inset,
+        transparent
       );
+      if (solidUnderlay) {
+        const comp = this.makeSolidFallbackTile(S, solidUnderlay);
+        comp
+          .getContext('2d')!
+          .drawImage(extracted, 0, 0, extracted.width, extracted.height, 0, 0, S, S);
+        putTileCanvas(tileIdx, comp);
+        return;
+      }
+      putTileCanvas(tileIdx, extracted);
     };
 
-    // 1. 宮廷暖砂青石磚家族（呼應上傳紫禁城圖片之溫潤古石色調）
+    // 1. 宮廷暖砂青石磚家族
     const baseBrick = palaceImg
-      ? this.extractGridSubCanvas(palaceImg, 8, 10, 1, 5, 1, 1, 4.5, false)
+      ? this.extractGridSubCanvas(palaceImg, 8, 10, 1, 5, 1, 1, 5, false)
       : this.makeSolidFallbackTile(S, '#988874');
     const warmTone = { mulR: 1.06, mulG: 1.0, mulB: 0.92 };
 
@@ -1770,7 +1909,7 @@ export class OriginalArtLoader {
       this.makeSeamlessFamilyVariant(baseBrick, S, { ...warmTone, shiftY: Math.round(12 * kScale), addLum: 2 })
     );
 
-    // 2. 漢白玉御道與雲龍丹陛石雕（S=48 時保留雙倍石雕紋理）
+    // 2. 漢白玉御道與雲龍丹陛石雕
     const rawPaleStone = palaceImg
       ? this.extractGridSubCanvas(palaceImg, 8, 10, 0, 5, 1, 1, 10, false)
       : this.makeSolidFallbackTile(S, '#ebe6dc');
@@ -1817,7 +1956,7 @@ export class OriginalArtLoader {
           7,
           1,
           1,
-          4,
+          5,
           false
         );
         const tmp = this.makeCanvas(inner, inner);
@@ -1843,11 +1982,30 @@ export class OriginalArtLoader {
 
     putTileCanvas(TileIndex.MARBLE_DRAGON_CARVING, buildHarmonizedMarbleRelief(false));
     putTileCanvas(ExtraTileIndex.CARVED_MEDALLION_STONE, buildHarmonizedMarbleRelief(true));
-    putGridTile(TileIndex.MARBLE_STAIR, palaceImg, 8, 10, 2, 8, 1, 1.85, 4, false);
+
+    // 漢白玉石階：去背兩側灰白格後疊於純淨漢白玉底板，不露棋盤格亦不漏黑底
+    {
+      const stairBase = buildSmoothMarbleSlab({}, 8);
+      if (palaceImg) {
+        const stairCut = this.extractNormalizedSubCanvas(
+          palaceImg,
+          0.256,
+          0.804,
+          0.116,
+          0.188,
+          true,
+          true
+        );
+        stairBase
+          .getContext('2d')!
+          .drawImage(stairCut, 0, 0, stairCut.width, stairCut.height, 0, 0, S, S);
+      }
+      putTileCanvas(TileIndex.MARBLE_STAIR, stairBase);
+    }
 
     // 3. 殿內蘇州金磚家族
     const rawHallBrick = palaceImg
-      ? this.extractGridSubCanvas(palaceImg, 8, 10, 3, 6, 1, 1, 4.5, false)
+      ? this.extractGridSubCanvas(palaceImg, 8, 10, 3, 6, 1, 1, 5, false)
       : this.makeSolidFallbackTile(S, '#8a6d4b');
     const baseHallTile = this.makeToroidalSeamless(rawHallBrick, S, Math.round(3 * kScale));
     putTileCanvas(TileIndex.HALL_GOLD_BRICK_A, this.makeSeamlessFamilyVariant(baseHallTile, S, {}));
@@ -1881,7 +2039,7 @@ export class OriginalArtLoader {
       putTileCanvas(TileIndex.RED_CARPET_CENTER, carpet);
     }
 
-    // 4. 江南純淨連續草地家族
+    // 4. 江南草地家族
     const rawGrassA = jiangnanImg
       ? this.extractGridSubCanvas(jiangnanImg, 8, 12, 0, 2, 1, 1, 5, false)
       : this.makeSolidFallbackTile(S, '#5b8240');
@@ -1930,7 +2088,7 @@ export class OriginalArtLoader {
       putTileCanvas(TileIndex.GRASS_FLOWER, flowerGrass);
     }
 
-    // 5. 黃土路、沙地與微弧自然田壟旱田
+    // 5. 黃土路、沙地與旱田
     const rawEarth = jiangnanImg
       ? this.extractNormalizedSubCanvas(jiangnanImg, 0.388, 0.094, 0.098, 0.064, false)
       : this.makeSolidFallbackTile(S, '#aa8c60');
@@ -2009,7 +2167,7 @@ export class OriginalArtLoader {
     putTileCanvas(ExtraTileIndex.DRY_FARMLAND_C, makeDryFarmland(13, false));
     putTileCanvas(ExtraTileIndex.DRY_FARMLAND_D, makeDryFarmland(17, true));
 
-    // 6. 水紋、石駁岸、荷池、石拱橋面、青石岸與木棧道
+    // 6. 水紋、荷池、石橋與棧道
     const rawWater = jiangnanImg
       ? this.extractGridSubCanvas(jiangnanImg, 8, 12, 6, 0, 1, 1, 5, false)
       : this.makeSolidFallbackTile(S, '#3b7c96');
@@ -2114,7 +2272,7 @@ export class OriginalArtLoader {
       this.makeSeamlessFamilyVariant(basePierWood, S, { shiftX: Math.round(8 * kScale), addLum: -1 })
     );
 
-    // 7. 宮牆、須彌座、琉璃飛簷與圓拱月門
+    // 7. 宮牆、門窗與琉璃飛簷（全部啟用深度去背或紅牆底襯，杜絕懸空灰白棋盤格！）
     putGridTile(TileIndex.MARBLE_BALUSTRADE_H, palaceImg, 8, 10, 0, 9, 1, 1, 2, true);
     putGridTile(TileIndex.MARBLE_BALUSTRADE_V, palaceImg, 8, 10, 6, 7, 1, 1, 2, true);
     {
@@ -2129,7 +2287,7 @@ export class OriginalArtLoader {
       putTileCanvas(TileIndex.TERRACE_BASE, terrace24);
     }
     putGridTile(TileIndex.RED_WALL_FRIEZE, palaceImg, 8, 10, 2, 0.04, 1, 0.5, 2, true);
-    putGridTile(TileIndex.RED_WALL_MID, palaceImg, 8, 10, 3, 0.36, 1, 0.48, 2, false);
+    putGridTile(TileIndex.RED_WALL_MID, palaceImg, 8, 10, 3, 0.36, 1, 0.48, 2, true, '#96261e', '#96261e');
     if (palaceImg) {
       const redWallBase = this.extractNormalizedSubCanvas(
         palaceImg,
@@ -2137,9 +2295,9 @@ export class OriginalArtLoader {
         0.382,
         0.105,
         0.068,
-        false
+        true
       );
-      const wCanvas = this.makeCanvas(S, S);
+      const wCanvas = this.makeSolidFallbackTile(S, '#96261e');
       const wCtx = wCanvas.getContext('2d')!;
       const trim = Math.round(4 * kScale);
       wCtx.drawImage(redWallBase, 0, 0, redWallBase.width, redWallBase.height, 0, 0, S, S - trim);
@@ -2152,10 +2310,10 @@ export class OriginalArtLoader {
       putTileCanvas(TileIndex.RED_WALL_BASE, this.makeSolidFallbackTile(S, '#96261e'));
     }
 
-    putGridTile(TileIndex.PALACE_WINDOW, palaceImg, 8, 10, 4, 7, 1, 1, 3, false);
-    putGridTile(ExtraTileIndex.PALACE_WINDOW_B, palaceImg, 8, 10, 5, 7, 1, 1, 3, false);
-    putGridTile(TileIndex.GATE_DOOR_LEFT, palaceImg, 8, 10, 6, 6, 1, 1, 3, false);
-    putGridTile(TileIndex.GATE_DOOR_RIGHT, palaceImg, 8, 10, 7, 6, 1, 1, 3, false);
+    putGridTile(TileIndex.PALACE_WINDOW, palaceImg, 8, 10, 4, 7, 1, 1, 3, true, '#96261e', '#96261e');
+    putGridTile(ExtraTileIndex.PALACE_WINDOW_B, palaceImg, 8, 10, 5, 7, 1, 1, 3, true, '#96261e', '#96261e');
+    putGridTile(TileIndex.GATE_DOOR_LEFT, palaceImg, 8, 10, 6, 6, 1, 1, 3, true, '#8c1f17', '#8c1f17');
+    putGridTile(TileIndex.GATE_DOOR_RIGHT, palaceImg, 8, 10, 7, 6, 1, 1, 3, true, '#8c1f17', '#8c1f17');
     {
       const moon24 = this.makeCanvas(24, 24);
       const mCtx = moon24.getContext('2d')!;
@@ -2182,34 +2340,34 @@ export class OriginalArtLoader {
       );
       putTileCanvas(
         TileIndex.ROOF_GOLD_SLOPE,
-        this.extractNormalizedSubCanvas(palaceImg, 0.25, 0.158, 0.115, 0.062, false)
+        this.extractNormalizedSubCanvas(palaceImg, 0.25, 0.158, 0.115, 0.062, true)
       );
       putTileCanvas(
         TileIndex.ROOF_EAVE_GOLD,
-        this.extractNormalizedSubCanvas(palaceImg, 0.25, 0.214, 0.115, 0.066, false)
+        this.extractNormalizedSubCanvas(palaceImg, 0.25, 0.214, 0.115, 0.066, true)
       );
     }
 
     if (jiangnanImg) {
       putTileCanvas(
         TileIndex.DARK_ROOF_SLOPE,
-        this.extractNormalizedSubCanvas(jiangnanImg, 0.635, 0.506, 0.11, 0.042, false)
+        this.extractNormalizedSubCanvas(jiangnanImg, 0.635, 0.506, 0.11, 0.042, true)
       );
       putTileCanvas(
         TileIndex.DARK_ROOF_EAVE,
-        this.extractNormalizedSubCanvas(jiangnanImg, 0.635, 0.518, 0.11, 0.04, false)
+        this.extractNormalizedSubCanvas(jiangnanImg, 0.635, 0.518, 0.11, 0.04, true)
       );
-      putTileCanvas(
-        TileIndex.WHITE_WALL_WINDOW,
-        this.extractNormalizedSubCanvas(jiangnanImg, 0.632, 0.554, 0.112, 0.052, false)
-      );
+      const wwCanvas = this.makeSolidFallbackTile(S, '#f0ede4');
+      const wwSub = this.extractNormalizedSubCanvas(jiangnanImg, 0.632, 0.554, 0.112, 0.052, true);
+      wwCanvas.getContext('2d')!.drawImage(wwSub, 0, 0, wwSub.width, wwSub.height, 0, 0, S, S);
+      putTileCanvas(TileIndex.WHITE_WALL_WINDOW, wwCanvas);
     } else {
       putTileCanvas(TileIndex.DARK_ROOF_SLOPE, this.makeSolidFallbackTile(S, '#3c454d'));
       putTileCanvas(TileIndex.DARK_ROOF_EAVE, this.makeSolidFallbackTile(S, '#49535c'));
       putTileCanvas(TileIndex.WHITE_WALL_WINDOW, this.makeSolidFallbackTile(S, '#f0ede6'));
     }
 
-    // 8. 殿柱、樹木、香爐、軍營與道具磚
+    // 8. 殿柱、樹木、香爐、御座屏風、軍營與道具磚（全數啟用深度去背！）
     {
       const miniPillar = this.makeCanvas(S, S);
       const tallPillar = this.buildImperialVermilionPillar(false, 24, 48);
@@ -2278,8 +2436,8 @@ export class OriginalArtLoader {
     putTileCanvas(TileIndex.LANTERN_POST, this.buildCrispStoneLantern(true, 24, 24));
     putGridTile(TileIndex.TREASURY_CHEST, campImg, 8, 8, 4, 4, 1, 1, 2, true);
     putGridTile(TileIndex.MINIGAME_TABLE, campImg, 8, 8, 7, 2, 1, 1, 2, true);
-    putGridTile(TileIndex.EMPEROR_THRONE_DESK, palaceImg, 8, 10, 3, 7, 1, 1, 3, false);
-    putGridTile(TileIndex.EMPEROR_SCREEN, palaceImg, 8, 10, 6, 6, 1, 1, 3, false);
+    putGridTile(TileIndex.EMPEROR_THRONE_DESK, palaceImg, 8, 10, 3, 7, 1, 1, 3, true);
+    putGridTile(TileIndex.EMPEROR_SCREEN, palaceImg, 8, 10, 6, 6, 1, 1, 3, true);
     {
       const target24 = this.makeCanvas(24, 24);
       const tCtx = target24.getContext('2d')!;
@@ -2320,6 +2478,7 @@ export class OriginalArtLoader {
     if (jiangnanImg) {
       const rock = this.extractGridSubCanvas(jiangnanImg, 8, 12, 3, 11, 1, 1, 2.5, true);
       this.stripBorderWaterBackground(rock);
+      this.dehaloAlphaEdges(rock, 2);
       putTileCanvas(TileIndex.TAIHU_ROCK, rock);
     }
 
@@ -2332,9 +2491,6 @@ export class OriginalArtLoader {
     spriteSheetTex?.setFilter(Phaser.Textures.FilterMode.NEAREST);
   }
 
-  /**
-   * 建構立體建築、上傳素材之五大樹種（翠柳、古柏、粉紅花樹、金秋黃葉樹）、軍營原木柴火與船隻物件圖集
-   */
   private static buildPropsAtlas(
     scene: Phaser.Scene,
     palaceImg: HTMLImageElement | HTMLCanvasElement | null,
@@ -2359,16 +2515,27 @@ export class OriginalArtLoader {
       nh: number,
       targetW: number,
       targetH: number,
-      mode: 'opaque' | 'checker' | 'tree' | 'water_prop' = 'checker'
+      mode: 'opaque' | 'checker' | 'checker_sides' | 'tree' | 'water_prop' = 'checker'
     ) => {
       const dest = this.makeCanvas(targetW, targetH);
       const dCtx = dest.getContext('2d', { willReadFrequently: true })!;
       dCtx.imageSmoothingEnabled = false;
       if (img) {
-        const sub = this.extractNormalizedSubCanvas(img, nx, ny, nw, nh, mode !== 'opaque');
+        const sub = this.extractNormalizedSubCanvas(
+          img,
+          nx,
+          ny,
+          nw,
+          nh,
+          mode !== 'opaque',
+          mode === 'checker_sides'
+        );
         if (mode === 'tree') this.isolateCleanTreeCanopy(sub);
         else if (mode === 'water_prop') this.stripBorderWaterBackground(sub);
         dCtx.drawImage(sub, 0, 0, sub.width, sub.height, 0, 0, targetW, targetH);
+        if (mode !== 'opaque') {
+          this.dehaloAlphaEdges(dest, 2);
+        }
       }
       pieces.push({ names, canvas: dest });
     };
@@ -2382,7 +2549,7 @@ export class OriginalArtLoader {
     pieces.push({ names: ['palace_pillar_b'], canvas: this.buildImperialVermilionPillar(true, 30, 64) });
     pieces.push({ names: ['stone_lantern_a'], canvas: this.buildCrispStoneLantern(true, 28, 36) });
     pieces.push({ names: ['stone_lantern_b'], canvas: this.buildCrispStoneLantern(false, 28, 36) });
-    pushPiece(['marble_stairs_tall'], palaceImg, 0.258, 0.804, 0.114, 0.19, 48, 48, 'opaque');
+    pushPiece(['marble_stairs_tall'], palaceImg, 0.258, 0.804, 0.114, 0.19, 48, 48, 'checker_sides');
     pieces.push({ names: ['palace_eave_cap_l'], canvas: this.buildPalaceEaveCap(false) });
     pieces.push({ names: ['palace_eave_cap_r'], canvas: this.buildPalaceEaveCap(true) });
     pieces.push({ names: ['palace_dougong_span'], canvas: this.buildPalaceDougongSpan(96, 18) });
@@ -2404,23 +2571,21 @@ export class OriginalArtLoader {
         flip: boolean,
         style: 'emerald' | 'pine' | 'blossom' | 'autumn'
       ) => {
+        const treeSrc = flip ? this.flipCanvasHorizontal(srcTree) : srcTree;
         const c = this.makeCanvas(w, h);
         const tCtx = c.getContext('2d', { willReadFrequently: true })!;
-        tCtx.save();
         tCtx.imageSmoothingEnabled = false;
-        if (flip) {
-          tCtx.translate(w, 0);
-          tCtx.scale(-1, 1);
-        }
-        tCtx.drawImage(srcTree, 0, 0, srcTree.width, srcTree.height, 2, 2, w - 4, h - 4);
-        tCtx.restore();
+        tCtx.drawImage(treeSrc, 0, 0, treeSrc.width, treeSrc.height, 2, 2, w - 4, h - 4);
 
         const imgD = tCtx.getImageData(0, 0, w, h);
         const d = imgD.data;
         for (let y = 0; y < h; y++) {
           for (let x = 0; x < w; x++) {
             const p = (y * w + x) * 4;
-            if (d[p + 3] < 20) continue;
+            if (d[p + 3] < 40) {
+              d[p + 3] = 0;
+              continue;
+            }
             const r = d[p];
             const g = d[p + 1];
             const b = d[p + 2];
@@ -2448,6 +2613,7 @@ export class OriginalArtLoader {
           }
         }
         tCtx.putImageData(imgD, 0, 0);
+        this.dehaloAlphaEdges(c, 2);
         return c;
       };
 
@@ -2544,7 +2710,6 @@ export class OriginalArtLoader {
     scene: Phaser.Scene,
     charImg: HTMLImageElement | HTMLCanvasElement | null
   ): void {
-    // 先註冊上傳之全解析度主角小學生 4 向動畫精靈圖
     const studentReady = this.registerReadySchoolboySheet(scene);
 
     if (!charImg) return;
@@ -2722,12 +2887,9 @@ export class OriginalArtLoader {
   }
 
   /**
-   * 依據上傳之 4x4 小學生像素圖（256x336，每格 64x84），
-   * 重組精準四方向動畫：
-   * - down（正面）：(0,0), (0,1), (0,2), (0,3)
-   * - left（側面朝左）：(1,0), (1,2), (1,3), (2,0)
-   * - right（側面朝右）：(2,2), (2,3), (3,3), (2,2)
-   * - up（背面朝上）：由正面步伐合成後腦黑髮與白校服背領，避免向上走時臉朝鏡頭
+   * 讀取專案實體檔案 char-student-schoolboy.png（4x4 四方向：下、左、右、上），
+   * 逐格深度清理殘餘灰白邊緣，並檢查全部 16 格不透明像素完整性（確保左行與右行 100% 正常顯示）！
+   * 隨後交由 CrispVisuals 自動執行 4x EPX 高清放大至 128x168。
    */
   private static registerReadySchoolboySheet(scene: Phaser.Scene): boolean {
     if (!scene.textures.exists(RAW_PNG_KEYS.SCHOOLBOY)) return false;
@@ -2738,129 +2900,60 @@ export class OriginalArtLoader {
       return false;
     }
 
-    const srcCellW = Math.max(16, Math.floor(img.width / 4));
-    const srcCellH = Math.max(20, Math.floor(img.height / 4));
-    const dstFW = CHAR_FRAME_W * CHAR_HD_SCALE; // 128
-    const dstFH = CHAR_FRAME_H * CHAR_HD_SCALE; // 168
+    const cellW = Math.max(16, Math.floor(img.width / 4));
+    const cellH = Math.max(20, Math.floor(img.height / 4));
 
-    const extractCell = (col: number, row: number): HTMLCanvasElement => {
-      const c = this.makeCanvas(srcCellW, srcCellH);
-      const cCtx = c.getContext('2d', { willReadFrequently: true })!;
-      cCtx.imageSmoothingEnabled = false;
-      cCtx.drawImage(
-        img,
-        col * srcCellW,
-        row * srcCellH,
-        srcCellW,
-        srcCellH,
-        0,
-        0,
-        srcCellW,
-        srcCellH
-      );
-      return c;
-    };
-
-    const makeBackViewFromFront = (frontCell: HTMLCanvasElement): HTMLCanvasElement => {
-      const back = this.makeCanvas(srcCellW, srcCellH);
-      const bCtx = back.getContext('2d', { willReadFrequently: true })!;
-      bCtx.drawImage(frontCell, 0, 0);
-      const imgD = bCtx.getImageData(0, 0, srcCellW, srcCellH);
-      const d = imgD.data;
-      const headEndY = Math.floor(srcCellH * 0.44);
-      const shirtEndY = Math.floor(srcCellH * 0.68);
-      const midX = srcCellW / 2;
-
-      for (let y = 2; y < headEndY; y++) {
-        for (let x = 2; x < srcCellW - 2; x++) {
-          const p = (y * srcCellW + x) * 4;
-          if (d[p + 3] < 80) continue;
-          const r = d[p];
-          const g = d[p + 1];
-          const b = d[p + 2];
-          const isSkinOrEye =
-            (r - b > 26 && r > 135) || (y > srcCellH * 0.22 && Math.abs(x - midX) < srcCellW * 0.22);
-          if (isSkinOrEye) {
-            // 後腦自然層次深褐黑短髮與衣領交界
-            if (y >= headEndY - 3 && Math.abs(x - midX) < srcCellW * 0.13) {
-              d[p] = 224;
-              d[p + 1] = 176;
-              d[p + 2] = 142;
-            } else {
-              const highlight = y < srcCellH * 0.2 && Math.abs(x - midX) < srcCellW * 0.14;
-              d[p] = highlight ? 48 : 28;
-              d[p + 1] = highlight ? 52 : 31;
-              d[p + 2] = highlight ? 66 : 40;
-            }
-          }
-        }
-      }
-
-      // 將正面校章與領口改為乾淨白色校服背部與後領線
-      for (let y = headEndY; y < shirtEndY; y++) {
-        for (let x = Math.floor(midX - srcCellW * 0.18); x <= Math.ceil(midX + srcCellW * 0.18); x++) {
-          const p = (y * srcCellW + x) * 4;
-          if (d[p + 3] < 80) continue;
-          const r = d[p];
-          const g = d[p + 1];
-          const b = d[p + 2];
-          const lum = (r + g + b) / 3;
-          if (lum > 70) {
-            const isCollarLine = y <= headEndY + 2;
-            d[p] = isCollarLine ? 214 : 242;
-            d[p + 1] = isCollarLine ? 220 : 244;
-            d[p + 2] = isCollarLine ? 228 : 248;
-          }
-        }
-      }
-
-      bCtx.putImageData(imgD, 0, 0);
-      return back;
-    };
-
-    const downCells = [extractCell(0, 0), extractCell(1, 0), extractCell(2, 0), extractCell(3, 0)];
-    const leftCells = [extractCell(0, 1), extractCell(2, 1), extractCell(3, 1), extractCell(0, 2)];
-    const rightCells = [extractCell(2, 2), extractCell(3, 2), extractCell(3, 3), extractCell(2, 2)];
-    const upCells = downCells.map((fc) => makeBackViewFromFront(fc));
-    const allRows = [downCells, leftCells, rightCells, upCells];
-
-    const key = 'char_student';
-    const rawKey = 'char_student_hd_sheet';
-    if (scene.textures.exists(key)) scene.textures.remove(key);
-    if (scene.textures.exists(rawKey)) scene.textures.remove(rawKey);
-
-    const outTex = scene.textures.createCanvas(rawKey, dstFW * 4, dstFH * 4);
-    if (!outTex) return false;
-    const ctx = outTex.getContext();
-    ctx.imageSmoothingEnabled = false;
+    const cleanSheet = this.makeCanvas(cellW * 4, cellH * 4);
+    const sCtx = cleanSheet.getContext('2d', { willReadFrequently: true })!;
+    sCtx.imageSmoothingEnabled = false;
 
     for (let r = 0; r < 4; r++) {
       for (let c = 0; c < 4; c++) {
-        const cell = allRows[r][c];
-        const ox = c * dstFW;
-        const oy = r * dstFH;
-        const dyBob = c % 2 === 1 ? -3 : 0;
-        ctx.drawImage(
-          cell,
+        const cell = this.makeCanvas(cellW, cellH);
+        const cCtx = cell.getContext('2d', { willReadFrequently: true })!;
+        cCtx.imageSmoothingEnabled = false;
+        cCtx.drawImage(
+          img,
+          c * cellW,
+          r * cellH,
+          cellW,
+          cellH,
           0,
           0,
-          srcCellW,
-          srcCellH,
-          ox,
-          oy + dyBob,
-          dstFW,
-          dstFH
+          cellW,
+          cellH
         );
+        this.removeCheckerboardAndGrid(cell);
+
+        // 驗證該畫格確實有不透明像素，防止任何方向出現隱形畫格
+        const d = cCtx.getImageData(0, 0, cellW, cellH).data;
+        let opaqueCount = 0;
+        for (let i = 3; i < d.length; i += 4) {
+          if (d[i] >= 80) opaqueCount++;
+        }
+        if (opaqueCount < 20) {
+          return false;
+        }
+        sCtx.drawImage(cell, c * cellW, r * cellH);
       }
     }
-    outTex.refresh();
+
+    const key = 'char_student';
+    const rawKey = 'char_student_clean_base';
+    if (scene.textures.exists(key)) scene.textures.remove(key);
+    if (scene.textures.exists(rawKey)) scene.textures.remove(rawKey);
+
+    const baseTex = scene.textures.createCanvas(rawKey, cleanSheet.width, cleanSheet.height);
+    if (!baseTex) return false;
+    baseTex.getContext().drawImage(cleanSheet, 0, 0);
+    baseTex.refresh();
 
     const charSpriteTex = scene.textures.addSpriteSheet(
       key,
-      outTex.getSourceImage() as HTMLImageElement,
+      baseTex.getSourceImage() as HTMLImageElement,
       {
-        frameWidth: dstFW,
-        frameHeight: dstFH
+        frameWidth: cellW,
+        frameHeight: cellH
       }
     );
     if (!charSpriteTex) return false;
@@ -2884,10 +2977,6 @@ export class OriginalArtLoader {
     return true;
   }
 
-  /**
-   * 直接以原生全解析度 (128x168) 繪製所有清朝歷史角色精靈圖，
-   * 不再壓縮成 32x42 導致五官、朝珠、頂戴與衣紋糊化！
-   */
   private static registerCharacterSpritesheetAndAnims(
     scene: Phaser.Scene,
     spec: CharacterSheetSpec,
@@ -2988,16 +3077,20 @@ export class OriginalArtLoader {
         }
         const drawX = cellX + Math.floor((fw - dw) / 2);
         const drawY = cellY + (fh - 6) - dh + entry.dy;
-        ctx.save();
-        ctx.imageSmoothingEnabled = false;
-        if (entry.flipX) {
-          ctx.translate(drawX + dw, drawY);
-          ctx.scale(-1, 1);
-          ctx.drawImage(entry.img, 0, 0, entry.img.width, entry.img.height, 0, 0, dw, dh);
-        } else {
-          ctx.drawImage(entry.img, 0, 0, entry.img.width, entry.img.height, drawX, drawY, dw, dh);
-        }
-        ctx.restore();
+        const srcToDraw = entry.flipX
+          ? this.flipCanvasHorizontal(entry.img)
+          : entry.img;
+        ctx.drawImage(
+          srcToDraw,
+          0,
+          0,
+          srcToDraw.width,
+          srcToDraw.height,
+          drawX,
+          drawY,
+          dw,
+          dh
+        );
       }
     }
 
@@ -3041,14 +3134,17 @@ export class OriginalArtLoader {
     if (campImg) {
       const hull = this.extractNormalizedSubCanvas(campImg, 0.506, 0.86, 0.24, 0.128, true);
       this.stripBorderWaterBackground(hull);
+      this.dehaloAlphaEdges(hull, 2);
       ctx.drawImage(hull, 0, 0, hull.width, hull.height, 6, 36, 108, 30);
     } else {
       this.fillBox(ctx, 10, 42, 98, 20, '#5c3318');
     }
     if (palaceImg) {
-      const cabinWin = this.extractGridSubCanvas(palaceImg, 8, 10, 4, 7, 2, 1, 3, false);
+      this.fillBox(ctx, 30, 24, 58, 18, '#7a1f16');
+      const cabinWin = this.extractGridSubCanvas(palaceImg, 8, 10, 4, 7, 2, 1, 3, true);
       ctx.drawImage(cabinWin, 0, 0, cabinWin.width, cabinWin.height, 28, 23, 62, 20);
       const roof = this.extractNormalizedSubCanvas(palaceImg, 0.008, 0.106, 0.736, 0.188, true);
+      this.dehaloAlphaEdges(roof, 2);
       ctx.drawImage(roof, 0, 0, roof.width, roof.height, 18, 6, 82, 24);
     }
     this.fillBox(ctx, 108, 31, 8, 13, '#e8b632');
